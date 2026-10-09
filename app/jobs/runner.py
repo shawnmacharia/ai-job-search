@@ -50,6 +50,31 @@ KIND_EMPTY = "empty"
 KIND_FAILED = "failed"
 
 
+#: Why a source was not consulted.
+SKIP_DISABLED = "disabled"
+SKIP_ACCESS_UNKNOWN = "access_unknown"
+SKIP_ACCESS_RESTRICTED = "access_restricted"
+SKIP_ACCESS_NOT_PERMITTED = "access_not_permitted"
+SKIP_NO_FETCHER = "no_fetcher"
+
+
+@dataclass(frozen=True)
+class SkippedSource:
+    """A source that was deliberately not consulted, and why.
+
+    A skip is not a failure and never affects the exit code, but it is never
+    silent either: a source that quietly disappears from a run is
+    indistinguishable from one that was never configured.
+    """
+
+    name: str
+    code: str
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "code": self.code, "reason": self.reason}
+
+
 @dataclass(frozen=True)
 class SourceSpec:
     """One source to consult.
@@ -93,6 +118,7 @@ def run_sources(
     observed_at: Optional[datetime] = None,
     run_id: Optional[str] = None,
     now: Optional[Callable[[], float]] = None,
+    skipped: Sequence[Any] = (),
 ) -> RunRecord:
     """Consult every spec, ingest what each returns, and record one run.
 
@@ -104,6 +130,11 @@ def run_sources(
     :class:`~app.jobs.store.SourceOutcome` per source and is already appended to
     ``data/runs.jsonl``. Its :meth:`~app.jobs.store.RunRecord.exit_code` is
     ``2`` only when every source failed.
+
+    ``skipped`` carries sources that were deliberately not consulted - typically
+    from :mod:`app.jobs.sources`. The runner accepts them without knowing where
+    they came from, so the registry stays decoupled. They are recorded, and they
+    never influence the exit code.
     """
     clock = now or time.monotonic
     moment = observed_at or datetime.now(timezone.utc)
@@ -113,6 +144,10 @@ def run_sources(
         run_id=run_id or f"run-{stamp}",
         started_at=stamp,
         finished_at=stamp,
+        skipped=[
+            entry.to_dict() if isinstance(entry, SkippedSource) else dict(entry)
+            for entry in skipped
+        ],
     )
 
     for spec in specs:
@@ -148,12 +183,13 @@ def run_sources(
 
 
 def summarise(run: RunRecord) -> list[dict[str, Any]]:
-    """A flat, human-readable view of a run, one dict per source.
+    """A flat, human-readable view of a run: one entry per source, then skips.
 
     Convenience for reporting and for tests; the authoritative record remains
-    ``data/runs.jsonl``.
+    ``data/runs.jsonl``. Skipped sources are included precisely so that this
+    view can never imply a source was never configured.
     """
-    return [
+    rows = [
         {
             "source": outcome.name,
             "kind": classify(outcome),
@@ -168,3 +204,12 @@ def summarise(run: RunRecord) -> list[dict[str, Any]]:
         }
         for outcome in run.sources
     ]
+    rows.extend(
+        {"source": entry["name"], "kind": "skipped", "reason": entry["reason"],
+         "code": entry["code"]}
+        for entry in run.skipped
+    )
+    if run.no_active_sources:
+        rows.append({"source": None, "kind": "no_active_sources",
+                     "reason": "no source was consulted in this run"})
+    return rows
