@@ -17,24 +17,29 @@ decision recorded at all - is skipped. There is no implicit allow.
 skipped report with a human-readable reason, and that report reaches the run
 ledger. Silence is the failure mode this module exists to prevent.
 
-Access decisions are *declared*, not verified
-----------------------------------------------
+Access decisions are declared here, verified elsewhere
+------------------------------------------------------
 The registry performs no robots.txt fetch, no HTTP request, no DNS lookup and
-no network access of any kind. It enforces a decision that was made and recorded
-somewhere else. That is deliberate: an access check is a point-in-time
-observation that belongs at the collection boundary, where a live check can
-actually be run, rather than inside a configuration object that may be consulted
-in contexts where network access is not available or not wanted.
+no network access of any kind. It enforces a decision recorded somewhere else.
+That remains deliberate: an access check is a point-in-time observation that
+belongs at the collection boundary, not inside a configuration object that may
+be consulted in contexts where network access is unavailable or unwanted.
 
-Until live verification exists, ``permitted`` is a human or operator assertion
-and the registry treats it as such. Wiring live checks in later is additive:
-a source will additionally require a passing check, and the declared decision
-remains necessary but no longer sufficient.
+What changed is that ``permitted`` is no longer a bare assertion. It is backed
+by :mod:`app.sources.access`, which fetches robots.txt and the terms page and
+records an :class:`~app.sources.access.AccessDecision` with evidence.
+
+A recorded decision is **necessary** for a source to be active, and
+:func:`SourceRegistry.enforce_recorded_decisions` can require it to be
+*present*, so a source cannot become permitted on nothing but a config edit.
+See :mod:`app.sources.access` for why a permissive robots.txt is necessary but
+not sufficient - a site may allow a path and still challenge the client that
+asks for it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from app.jobs.runner import (
@@ -218,6 +223,36 @@ class SourceRegistry:
             specs.append(SourceSpec(name=config.name, fetch=fetch))
 
         return SourcePlan(specs=specs, skipped=skipped)
+
+    def enforce_recorded_decisions(
+        self, decisions: Mapping[str, Any]
+    ) -> "SourceRegistry":
+        """Downgrade any source whose recorded verification does not permit it.
+
+        Configuration can claim a source is permitted; this consults the
+        evidence instead. A source with no recorded decision is downgraded to
+        ``unknown``, because an unverified claim is not a permission.
+
+        Returns a new registry - the original is untouched - so a caller cannot
+        accidentally leave the unverified version in place.
+        """
+        downgraded: List[SourceConfig] = []
+        for config in self._configs.values():
+            decision = decisions.get(config.name)
+            level = getattr(decision, "level", None)
+            level_value = getattr(level, "value", level)
+            if level_value == PERMITTED:
+                downgraded.append(config)
+                continue
+            detail = getattr(decision, "reason", "") or "no verification decision recorded"
+            downgraded.append(
+                replace(
+                    config,
+                    access=RESTRICTED if level_value == RESTRICTED else UNKNOWN,
+                    note=f"recorded access verification: {detail}",
+                )
+            )
+        return SourceRegistry(downgraded)
 
 
 def default_registry() -> SourceRegistry:

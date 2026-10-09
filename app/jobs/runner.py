@@ -56,6 +56,7 @@ SKIP_ACCESS_UNKNOWN = "access_unknown"
 SKIP_ACCESS_RESTRICTED = "access_restricted"
 SKIP_ACCESS_NOT_PERMITTED = "access_not_permitted"
 SKIP_NO_FETCHER = "no_fetcher"
+SKIP_NOT_VERIFIED = "not_verified"
 
 
 @dataclass(frozen=True)
