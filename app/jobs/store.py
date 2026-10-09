@@ -169,6 +169,9 @@ class SourceOutcome:
     stored: int = 0
     updated: int = 0
     rejected: int = 0
+    #: Records newly flagged as a likely cross-source duplicate. Flagged only;
+    #: a fingerprint match never merges.
+    possible_duplicates: int = 0
     error: Optional[str] = None
     duration_ms: int = 0
 
@@ -438,7 +441,7 @@ class JobStore:
 
         for raw in records:
             if not isinstance(raw, Mapping):
-                self._quarantine(raw, reason="record is not a mapping", source=source, observed_at=moment)
+                self.quarantine(raw, reason="record is not a mapping", source=source, observed_at=moment)
                 result.rejected += 1
                 continue
 
@@ -448,7 +451,7 @@ class JobStore:
                 if not str(raw.get(field_name) or "").strip()
             ]
             if missing:
-                self._quarantine(
+                self.quarantine(
                     raw,
                     reason=f"missing required field(s): {', '.join(missing)}",
                     source=source,
@@ -459,7 +462,7 @@ class JobStore:
 
             url_key = normalize_url(str(raw["url"]))
             if not url_key:
-                self._quarantine(
+                self.quarantine(
                     raw, reason="url could not be normalized", source=source, observed_at=moment
                 )
                 result.rejected += 1
@@ -546,9 +549,14 @@ class JobStore:
             self._write_seen(seen)
         return result
 
-    def _quarantine(
-        self, raw: Any, *, reason: str, source: str, observed_at: str
-    ) -> None:
+    def quarantine(self, raw: Any, *, reason: str, source: str, observed_at: str) -> None:
+        """Write an unusable record to ``data/rejected.jsonl`` with a reason.
+
+        Public so that ingestion can quarantine a record the *adapter*
+        rejected, not only one the store's own validation caught. Both paths
+        land in the same file for the same reason: a record that cannot become
+        a ``Job`` must be visible, never dropped.
+        """
         self._append(
             self.rejected_path,
             {
