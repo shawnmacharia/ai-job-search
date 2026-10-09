@@ -1,0 +1,15 @@
+{
+  "_note": "Region-restricted remote role. Must not be treated as worldwide.",
+  "title": "Data Engineer",
+  "company": "Fjord Analytics",
+  "company_blurb": null,
+  "location": "Remote (EU)",
+  "salary": "Competitive",
+  "work_mode": "Remote",
+  "employment_type": "Contract",
+  "posted": "2026-09-01",
+  "description_snippet": "Build streaming ingestion with Kafka and Spark for European customers.",
+  "url": "https://hiring.cafe/job/eu-restricted-005",
+  "matched_query": "Data Engineer",
+  "skill_match_count": 3
+}

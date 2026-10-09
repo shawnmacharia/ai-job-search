@@ -1,0 +1,15 @@
+{
+  "_note": "European dot-as-thousands separator: 3.500 is 3500, not 3.5. See CHANGELOG #326.",
+  "title": "Analytics Engineer",
+  "company": "Beispiel GmbH",
+  "company_blurb": null,
+  "location": "Berlin, Germany",
+  "salary": "€3.500 per month",
+  "work_mode": "Hybrid",
+  "employment_type": "Full-time",
+  "posted": "1w ago",
+  "description_snippet": "Arbeite an unserem Data Warehouse mit dbt, Airflow und PostgreSQL.",
+  "url": "https://hiring.cafe/job/salary-eur-003",
+  "matched_query": "Analytics Engineer",
+  "skill_match_count": 6
+}

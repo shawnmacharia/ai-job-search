@@ -1,0 +1,15 @@
+{
+  "_note": "Posted string is not a date. posted_date must be None; posted_raw keeps the original.",
+  "title": "BI Developer",
+  "company": "Initech",
+  "company_blurb": null,
+  "location": "Remote",
+  "salary": null,
+  "work_mode": "Remote",
+  "employment_type": "Full-time",
+  "posted": "recently",
+  "description_snippet": "Ship Power BI reports and DAX measures against a SQL Server warehouse.",
+  "url": "https://hiring.cafe/job/bad-posted-007",
+  "matched_query": "BI Developer",
+  "skill_match_count": 2
+}

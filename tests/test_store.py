@@ -142,6 +142,36 @@ class DeduplicationTests(StoreTestCase):
         self.assertNotEqual(fingerprint("Acme Labs", "Data Engineer"), fingerprint("Labs Acme", "Data Engineer"))
 
 
+class JobProjectionTests(StoreTestCase):
+    """The store projects raw records onto Job.__dataclass_fields__.
+
+    Fields added to Job after P0 - provenance and completeness - must flow
+    through that projection automatically, or the store would silently drop
+    them again, which is the failure mode P1 exists to end.
+    """
+
+    def test_fields_added_after_p0_are_projected_into_storage(self):
+        from app.jobs.models import Job
+
+        job = Job(
+            job_id="abc123",
+            title="Data Engineer",
+            company="Acme",
+            url="https://example.test/job/abc",
+            description="A description that must survive.",
+            raw_excerpt={"company_blurb": "Series C fintech"},
+            posted_raw="2d ago",
+            description_complete=False,
+        )
+        self.store.store([job.__dict__], source="hiring.cafe")
+
+        stored = self.store.load_jobs()[0]["job"]
+        self.assertEqual(stored["raw_excerpt"], {"company_blurb": "Series C fintech"})
+        self.assertEqual(stored["posted_raw"], "2d ago")
+        self.assertFalse(stored["description_complete"])
+        self.assertEqual(stored["description"], "A description that must survive.")
+
+
 class UrlNormalizationTests(StoreTestCase):
     def test_tracking_parameters_are_ignored(self):
         plain = normalize_url("https://Example.test/job/abc")
