@@ -14,8 +14,8 @@ jobs:
     name: Python tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -m unittest discover -s tests -t . -v
@@ -24,8 +24,8 @@ jobs:
     name: Security guards
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python tools/security_guards.py
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     container: texlive/texlive:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install PDF inspection tools
         run: apt-get update && apt-get install -y --no-install-recommends poppler-utils
       - name: Compile CV
@@ -67,7 +67,7 @@ jobs:
             linkedin-search,
           ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install
         working-directory: .agents/skills/${{ matrix.tool }}/cli
