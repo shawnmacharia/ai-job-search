@@ -72,6 +72,13 @@ td.wrap{max-width:26rem}
 .badge{font-size:.82rem;color:#6b7280}
 a{color:#2563eb}
 .empty{padding:2rem;text-align:center;color:#6b7280;border:1px dashed #d1d5db}
+.coverage{display:flex;gap:.75rem;flex-wrap:wrap;margin:0 0 1rem;font-size:.85rem;
+          border:1px solid #d1d5db;border-radius:.4rem;padding:.5rem .6rem}
+.notice{border-left:3px solid #b45309;background:#fffbeb;padding:.5rem .75rem;
+        margin:0 0 1rem;font-size:.9rem}
+.attribution{margin:1.25rem 0 0;font-size:.85rem;border-top:1px solid #d1d5db;
+             padding-top:.75rem;color:#374151}
+.attribution ul{margin:.4rem 0 0;padding-left:1.1rem}
 """
 
 
@@ -103,6 +110,10 @@ class JobView:
     possible_duplicate: bool
     match_explanation: str
     application_status: str
+    #: The source's own list of accepted countries, when it publishes one.
+    #: Kept verbatim so coverage can be reported from the source's enumeration
+    #: rather than from the eligibility verdict, which weighs other signals too.
+    country: str = ""
 
     @property
     def verdict_class(self) -> str:
@@ -113,7 +124,12 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-def _flag_job(job: Mapping[str, Any], verdict: EligibilityVerdict) -> List[str]:
+def _flag_job(
+    job: Mapping[str, Any],
+    verdict: EligibilityVerdict,
+    *,
+    candidate_country: str = "KE",
+) -> List[str]:
     """Deterministic review flags. No model involvement.
 
     Each flag is a fact about the *posting* a reviewer would otherwise have to
@@ -134,7 +150,63 @@ def _flag_job(job: Mapping[str, Any], verdict: EligibilityVerdict) -> List[str]:
         flags.append(f"deadline {job['deadline']}")
     if job.get("posted_date") is None and job.get("posted_raw"):
         flags.append(f"posted date unparsed ({job['posted_raw']})")
+    conflict = geography_conflict(job, candidate_country=candidate_country)
+    if conflict:
+        flags.append(conflict)
     return flags
+
+
+#: Phrases a source uses to claim unrestricted remote availability.
+_GLOBAL_CLAIMS = ("anywhere in the world", "worldwide", "globally", "anywhere")
+
+
+#: Display names for the ISO codes the eligibility policy uses, so a flag
+#: reads "omits Kenya" rather than "omits KE". Keys are lowercase because
+#: lookups casefold the code.
+_COUNTRY_NAMES = {"ke": "Kenya"}
+
+
+def _display_country(code: str) -> str:
+    return _COUNTRY_NAMES.get(code.casefold(), code)
+
+
+def geography_conflict(
+    job: Mapping[str, Any], *, candidate_country: str = "KE"
+) -> str:
+    """Flag a posting whose own fields disagree about the candidate's country.
+
+    Some sources publish a global label ("Anywhere in the World") *and* an
+    explicit enumeration of the countries they will actually hire in. When the
+    label says worldwide and that enumeration omits the candidate's country,
+    the posting contradicts itself.
+
+    This is reported rather than resolved. The eligibility policy is the
+    authority on verdicts and is deliberately not overridden here; instead the
+    disagreement is surfaced so a reviewer can weigh an "eligible" verdict that
+    rests on a contested reading.
+
+    The country list is compared against the full country name, since that is
+    the form sources publish it in; an ISO code would never match.
+    """
+    region = str(job.get("region") or "")
+    countries = str(job.get("country") or "")
+    if not countries:
+        return ""
+    claims_global = any(claim in region.casefold() for claim in _GLOBAL_CLAIMS)
+    if not claims_global:
+        return ""
+    enumerated = {
+        part.strip().casefold()
+        for part in countries.split(",")
+        if part.strip()
+    }
+    name = _display_country(candidate_country)
+    if candidate_country.casefold() in enumerated or name.casefold() in enumerated:
+        return ""
+    return (
+        f"source states worldwide, but its country list omits "
+        f"{name} - verdict rests on a contested reading"
+    )
 
 
 def _as_job(payload: Mapping[str, Any]) -> Job:
@@ -194,7 +266,7 @@ def build_view(
         verdict=verdict.verdict,
         verdict_reasons=list(verdict.reasons) + list(verdict.notes),
         evidence=list(verdict.evidence_quotes),
-        flags=_flag_job(job, verdict),
+        flags=_flag_job(job, verdict, candidate_country=candidate_country),
         sources=[name for name in sources if name],
         source_urls=[url for url in source_urls if url],
         first_seen=_text(record.get("first_seen")),
@@ -205,6 +277,7 @@ def build_view(
         possible_duplicate=bool(record.get("possible_duplicate")),
         match_explanation=match_explanation or NOT_EVALUATED,
         application_status=application_status or STATUS_PLACEHOLDER,
+        country=_text(job.get("country")),
     )
 
 
@@ -225,13 +298,22 @@ def _filtered(
     verdict: Optional[str] = None,
     source: Optional[str] = None,
     query: Optional[str] = None,
+    kenya_eligible: bool = False,
 ) -> List[JobView]:
-    """Apply filters at render time - there is no client-side scripting."""
+    """Apply filters at render time - there is no client-side scripting.
+
+    ``kenya_eligible`` narrows to jobs the eligibility policy judged eligible.
+    It is a *filter*, not a default: nothing is hidden unless the reader asks
+    for it, so a source that returns nothing eligible reads as empty coverage
+    rather than as a broken scraper.
+    """
     result = []
     for view in views:
         if verdict and view.verdict != verdict:
             continue
         if source and source not in view.sources:
+            continue
+        if kenya_eligible and view.verdict != "eligible":
             continue
         if query:
             haystack = " ".join(
@@ -241,6 +323,139 @@ def _filtered(
                 continue
         result.append(view)
     return result
+
+
+def coverage_of(
+    views: Sequence[JobView],
+    runs: Sequence[Mapping[str, Any]],
+    *,
+    candidate_country: str = "KE",
+) -> Dict[str, int]:
+    """Source coverage: what arrived, what was stored, and how it judged.
+
+    Computed from the jobs on screen plus the run ledger, so the reader can
+    tell "nothing was eligible" apart from "nothing was collected".
+
+    ``country_named`` counts jobs whose *published* country list names the
+    candidate's country. It is reported separately from ``eligible`` because
+    the two can disagree: the eligibility policy weighs worldwide wording and
+    body text, while a country list is the source's own explicit enumeration.
+    Showing only the verdict would hide that disagreement.
+    """
+    name = _display_country(candidate_country)
+    totals = {
+        "fetched": 0, "stored": 0, "rejected": 0,
+        "duplicates": 0, "quarantined": 0,
+        "eligible": 0, "not_eligible": 0, "unknown": 0,
+        "country_named": 0, "conflicts": 0,
+        "no_active_sources": 0, "runs": len(runs),
+    }
+    for run in runs:
+        totals["fetched"] += int(run.get("totals", {}).get("fetched", 0) or 0)
+        totals["stored"] += int(run.get("totals", {}).get("stored", 0) or 0)
+        totals["rejected"] += int(run.get("totals", {}).get("rejected", 0) or 0)
+        if run.get("no_active_sources"):
+            totals["no_active_sources"] += 1
+        for outcome in run.get("sources", []):
+            totals["duplicates"] += int(outcome.get("possible_duplicates", 0) or 0)
+            totals["quarantined"] += int(outcome.get("rejected", 0) or 0)
+    for view in views:
+        if view.verdict in ("eligible", "not_eligible", "unknown"):
+            totals[view.verdict] += 1
+        if any("contested reading" in flag for flag in view.flags):
+            totals["conflicts"] += 1
+        if _country_list_names(view, name):
+            totals["country_named"] += 1
+    return totals
+
+
+def _country_list_names(view: "JobView", name: str) -> bool:
+    """Does this view's published country list name ``name``?"""
+    haystack = f"{view.location} {view.country}"
+    return name.casefold() in haystack.casefold()
+
+
+def _coverage_panel(totals: Mapping[str, int], views: Sequence[JobView]) -> str:
+    """The coverage strip, plus honest notes where the numbers disagree."""
+    cells = (
+        ("fetched", totals["fetched"]),
+        ("stored", totals["stored"]),
+        ("eligible", totals["eligible"]),
+        ("not eligible", totals["not_eligible"]),
+        ("unknown", totals["unknown"]),
+        ("duplicates", totals["duplicates"]),
+        ("quarantined", totals["quarantined"]),
+        ("country lists naming Kenya", totals["country_named"]),
+        ("geography conflicts", totals["conflicts"]),
+    )
+    parts = "".join(
+        f"<span>{html.escape(label)}: <strong>{value}</strong></span>"
+        for label, value in cells
+    )
+
+    notes: List[str] = []
+    if totals["no_active_sources"]:
+        # Checked first: "nothing was collected" is the more useful message
+        # when it is true, and it would otherwise be masked below.
+        notes.append(
+            "No source was consulted in the most recent run. Nothing was "
+            "collected; this is not an empty result."
+        )
+    elif views and totals["eligible"] == 0:
+        notes.append(
+            "0 Kenya-eligible jobs in this feed; the feed currently excludes "
+            f"Kenya. {len(views)} job(s) were collected and judged "
+            f"{totals['not_eligible']} not eligible / {totals['unknown']} "
+            "unknown. This is a coverage limit, not a collection failure."
+        )
+    if views and totals["country_named"] == 0:
+        # The country list is the source's own enumeration of where it will
+        # hire. When it never names the candidate's country, that is the fact
+        # worth stating plainly - independently of what the verdict says.
+        # Deliberately does NOT claim "0 Kenya-eligible": the eligibility
+        # policy may disagree, and overstating the verdict in the other
+        # direction would be its own fabrication.
+        contested = (
+            f" {totals['eligible']} were nonetheless judged eligible on "
+            "worldwide wording or body text; treat those verdicts as contested."
+            if totals["eligible"] else ""
+        )
+        notes.append(
+            f"No collected listing names Kenya in its published country list "
+            f"({len(views)} listings checked). The feed currently excludes "
+            f"Kenya.{contested}"
+        )
+
+    rendered = "".join(f'<p class="notice">{html.escape(n)}</p>' for n in notes)
+    return f"<div class='coverage'>{parts}</div>{rendered}"
+
+
+def _attribution_footer(views: Sequence[JobView], attributions: Mapping[str, str]) -> str:
+    """Credit sources whose permission requires attribution.
+
+    We Work Remotely grants use of its feed on the condition that listings are
+    attributed with a link back. That is enforced here rather than left as a
+    convention, because losing attribution means losing access.
+    """
+    present = [
+        name for name in attributions
+        if any(name in view.sources for view in views)
+    ]
+    if not present:
+        return ""
+    lines = [
+        "<div class='attribution'><strong>Attribution required</strong><ul>"
+    ]
+    for name in sorted(present):
+        url = html.escape(attributions[name], quote=True)
+        label = html.escape(name)
+        lines.append(
+            f"<li>Listings from <a href='{url}' rel='noopener'>{label}</a> "
+            f"are provided under their feed's terms. Please link back to the "
+            f"original posting.</li>"
+        )
+    lines.append("</ul></div>")
+    return "".join(lines)
 
 
 def _cell(text: str, *, css: str = "") -> str:
@@ -322,6 +537,8 @@ def render_dashboard_html(
     generated_at: Optional[str] = None,
     title: str = "Job review",
     filters: Optional[Mapping[str, Any]] = None,
+    runs: Sequence[Mapping[str, Any]] = (),
+    attributions: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Render the review dashboard. Pure function of its inputs."""
     stamp = generated_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -335,6 +552,10 @@ def render_dashboard_html(
         f"<span>{html.escape(name)}: {count}</span>"
         for name, count in sorted(counts.items())
     ) or "<span>no jobs</span>"
+
+    totals = coverage_of(views, runs)
+    coverage = _coverage_panel(totals, views)
+    attribution = _attribution_footer(views, attributions or {})
 
     if views:
         body = "".join(render_row(view) for view in views)
@@ -361,7 +582,9 @@ def render_dashboard_html(
         f"<p class='meta'>Generated {html.escape(stamp)} &middot; read-only</p>"
         f"{applied}"
         f"<div class='summary'>{summary}</div>"
-        f"{table}</body></html>"
+        f"{coverage}"
+        f"{table}"
+        f"{attribution}</body></html>"
     )
 
 
@@ -377,6 +600,8 @@ def render_dashboard_file(
     sort: str = "company",
     match_explanations: Optional[Mapping[str, str]] = None,
     status_log: Optional[StatusLog] = None,
+    kenya_eligible: bool = False,
+    attributions: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Read the store, render, and write the dashboard. Returns the path written.
 
@@ -409,9 +634,11 @@ def render_dashboard_file(
         )
         for record in store.load_jobs()
     ]
-    selected = _filtered(views, verdict=verdict, source=source, query=query)
+    selected = _filtered(views, verdict=verdict, source=source, query=query,
+                          kenya_eligible=kenya_eligible)
     ordered = _sorted(selected, sort)
-    applied = {"verdict": verdict, "source": source, "query": query, "sort": sort}
+    applied = {"verdict": verdict, "source": source, "query": query,
+               "sort": sort, "kenya_eligible": kenya_eligible or None}
 
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -420,6 +647,8 @@ def render_dashboard_file(
             ordered,
             generated_at=generated_at,
             filters={key: value for key, value in applied.items() if value},
+            runs=store.load_runs(),
+            attributions=attributions,
         ),
         encoding="utf-8",
     )

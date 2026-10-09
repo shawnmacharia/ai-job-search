@@ -328,6 +328,13 @@ def register(adapter: SourceAdapter) -> SourceAdapter:
 
 register(HiringCafeAdapter())
 
+# We Work Remotely is registered but, unlike hiring.cafe, importing this module
+# performs no network access: its adapter only parses records it is handed. The
+# fetch happens in the caller, through app.sources.wwr.
+from app.sources.wwr import WwrSourceAdapter  # noqa: E402
+
+register(WwrSourceAdapter())
+
 
 def adapt_record(source: str, raw: Mapping[str, Any], *, now: Optional[datetime] = None) -> Job:
     """Adapt ``raw`` from ``source`` into a canonical ``Job``.
