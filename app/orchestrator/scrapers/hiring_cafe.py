@@ -281,12 +281,16 @@ def fetch_hiring_cafe_jobs(
     for job in results:
         job["skill_match_count"] = _skill_match_count(job)
 
+    # Keyword overlap orders results; it does not decide which are kept.
+    # min_skill_matches is retained only as a sort hint. Previously jobs below
+    # the threshold were discarded outright, which silently removed postings
+    # from the pipeline on a keyword count - exactly the "a score may reorder
+    # but never exclude" rule that app/jobs/match.py now enforces downstream.
+    # Any posting that was collected is a posting worth reviewing.
     if min_skill_matches > 0:
-        before = len(results)
-        results = [j for j in results if j["skill_match_count"] >= min_skill_matches]
         print(
-            f"[HiringCafe] {len(results)}/{before} jobs kept "
-            f"(min_skill_matches={min_skill_matches}).",
+            f"[HiringCafe] min_skill_matches={min_skill_matches} applied as a sort "
+            f"hint only; no job is discarded on keyword overlap.",
             flush=True,
         )
 
