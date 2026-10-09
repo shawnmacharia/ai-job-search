@@ -178,12 +178,19 @@ class SourceOutcome:
 
 @dataclass
 class RunRecord:
-    """One discovery run across every source."""
+    """One discovery run across every source.
+
+    ``skipped`` records sources that were deliberately not consulted - disabled,
+    or not cleared for access. A skip is not a failure: it must never turn a run
+    non-zero, but it must also never vanish, or a run that consulted nothing
+    would look identical to one that found nothing.
+    """
 
     run_id: str
     started_at: str = field(default_factory=_utcnow)
     finished_at: str = field(default_factory=_utcnow)
     sources: List[SourceOutcome] = field(default_factory=list)
+    skipped: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def total_fetched(self) -> int:
@@ -209,8 +216,20 @@ class RunRecord:
     def partially_failed(self) -> bool:
         return any(not source.ok for source in self.sources) and not self.all_failed
 
+    @property
+    def no_active_sources(self) -> bool:
+        """True when nothing was consulted at all.
+
+        Distinct from "found nothing": a run with no active sources says so
+        outright rather than reporting an unremarkable success.
+        """
+        return not self.sources
+
     def exit_code(self) -> int:
-        """Non-zero only when every source failed."""
+        """Non-zero only when every source that *ran* failed.
+
+        Skipped sources are not failures and never influence the exit code.
+        """
         return 2 if self.all_failed else 0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -222,6 +241,7 @@ class RunRecord:
             "exit_code": self.exit_code(),
             "all_failed": self.all_failed,
             "partially_failed": self.partially_failed,
+            "no_active_sources": self.no_active_sources,
             "totals": {
                 "fetched": self.total_fetched,
                 "stored": self.total_stored,
@@ -229,6 +249,7 @@ class RunRecord:
                 "rejected": self.total_rejected,
             },
             "sources": [asdict(source) for source in self.sources],
+            "skipped": list(self.skipped),
         }
 
 
