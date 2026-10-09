@@ -335,6 +335,12 @@ from app.sources.wwr import WwrSourceAdapter  # noqa: E402
 
 register(WwrSourceAdapter())
 
+# MyJobMag is registered for the same reason: parsing only, no network on
+# import. The fetch happens in the caller through app.sources.myjobmag.
+from app.sources.myjobmag import MyjobmagSourceAdapter  # noqa: E402
+
+register(MyjobmagSourceAdapter())
+
 
 def adapt_record(source: str, raw: Mapping[str, Any], *, now: Optional[datetime] = None) -> Job:
     """Adapt ``raw`` from ``source`` into a canonical ``Job``.
