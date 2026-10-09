@@ -37,6 +37,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from app.jobs.eligibility import EligibilityVerdict, evaluate_eligibility
 from app.jobs.models import Job, RemoteStatus
+from app.jobs.status import StatusError, StatusLog
 from app.jobs.store import JobStore
 
 
@@ -167,12 +168,15 @@ def build_view(
     *,
     candidate_country: str = "KE",
     match_explanation: Optional[str] = None,
+    application_status: Optional[str] = None,
 ) -> JobView:
     """Flatten one stored record into a :class:`JobView`.
 
-    ``match_explanation`` is supplied by the caller. Increment 6 computes it;
-    until then the dashboard renders ``not yet evaluated`` rather than implying
-    there is nothing to say.
+    ``match_explanation`` and ``application_status`` are supplied by the
+    caller. Match explanation is increment 6's to compute; status is increment
+    5's. When either is absent the column renders an explicit placeholder
+    rather than blank, because blank reads as "nothing to report" when it
+    actually means "not computed".
     """
     job: Mapping[str, Any] = record.get("job", {}) or {}
     verdict = evaluate_eligibility(
@@ -200,7 +204,7 @@ def build_view(
         description_complete=bool(job.get("description_complete")),
         possible_duplicate=bool(record.get("possible_duplicate")),
         match_explanation=match_explanation or NOT_EVALUATED,
-        application_status=STATUS_PLACEHOLDER,
+        application_status=application_status or STATUS_PLACEHOLDER,
     )
 
 
@@ -372,17 +376,36 @@ def render_dashboard_file(
     query: Optional[str] = None,
     sort: str = "company",
     match_explanations: Optional[Mapping[str, str]] = None,
+    status_log: Optional[StatusLog] = None,
 ) -> str:
     """Read the store, render, and write the dashboard. Returns the path written.
 
     This is the only function here that touches the filesystem, and it only
     ever *writes the report*. The store is read, never modified.
+
+    ``status_log`` is an optional :class:`~app.jobs.status.StatusLog`. Supplying
+    it replaces the status placeholder with the candidate's actual recorded
+    disposition.
     """
+    def status_of(job_id: str) -> Optional[str]:
+        if status_log is None:
+            return None
+        try:
+            return status_log.current(job_id).value
+        except StatusError:
+            # A status problem must not stop the dashboard rendering. The
+            # column falls back to its placeholder rather than the report
+            # failing wholesale. Only StatusError is caught - an unexpected
+            # failure should surface rather than be silently reported as
+            # "no status recorded".
+            return None
+
     views = [
         build_view(
             record,
             candidate_country=candidate_country,
             match_explanation=(match_explanations or {}).get(str(record.get("job_id"))),
+            application_status=status_of(str(record.get("job_id"))),
         )
         for record in store.load_jobs()
     ]
