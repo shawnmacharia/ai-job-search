@@ -1,0 +1,521 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss">
+  <channel>
+    <title>We Work Remotely: Remote jobs in design, programming, marketing and more</title>
+    <link>https://weworkremotely.com/remote-jobs.rss</link>
+    <description>We Work Remotely: Remote jobs in design, programming, marketing and more</description>
+    <language>en-US</language>
+    <ttl>60</ttl>
+    <item>
+      <media:content url="https://wwr-pro.s3.amazonaws.com/logos/0099/5988/logo.gif" type="image/png"/>
+      <title>Lemon.io: Senior React Full-stack Developer</title>
+      <region>Anywhere in the World</region>
+      <country>🇦🇩 Andorra, 🇦🇱 Albania, 🇦🇷 Argentina, 🇦🇹 Austria, 🇦🇺 Australia, 🇧🇦 Bosnia and Herzegovina, 🇧🇪 Belgium, 🇧🇬 Bulgaria, 🇧🇴 Bolivia (Plurinational State of), 🇧🇷 Brazil, 🇧🇿 Belize, 🇨🇦 Canada, 🇨🇭 Switzerland, 🇨🇱 Chile, 🇨🇴 Colombia, 🇨🇷 Costa Rica, 🇨🇾 Cyprus, 🇨🇿 Czechia, 🇩🇪 Germany, 🇩🇰 Denmark, 🇩🇴 Dominican Republic, 🇪🇨 Ecuador, 🇪🇪 Estonia, 🇪🇸 Spain, 🇫🇮 Finland, 🇫🇷 France, 🇬🇧 United Kingdom of Great Britain and Northern Ireland, 🇬🇷 Greece, 🇬🇹 Guatemala, 🇭🇳 Honduras, 🇭🇷 Croatia, 🇭🇹 Haiti, 🇭🇺 Hungary, 🇮🇩 Indonesia, 🇮🇪 Ireland, 🇮🇱 Israel, 🇮🇹 Italy, 🇯🇲 Jamaica, 🇯🇵 Japan, 🇰🇷 Korea (Republic of), 🇱🇹 Lithuania, 🇱🇺 Luxembourg, 🇱🇻 Latvia, 🇲🇦 Morocco, 🇲🇩 Moldova (Republic of), 🇲🇪 Montenegro, 🇲🇰 North Macedonia, 🇲🇹 Malta, 🇲🇽 Mexico, 🇲🇾 Malaysia, 🇳🇱 Netherlands, 🇳🇴 Norway, 🇳🇿 New Zealand, 🇵🇦 Panama, 🇵🇪 Peru, 🇵🇬 Papua New Guinea, 🇵🇭 Philippines, 🇵🇱 Poland, 🇵🇷 Puerto Rico, 🇵🇹 Portugal, 🇵🇾 Paraguay, 🇷🇴 Romania, 🇸🇪 Sweden, 🇸🇬 Singapore, 🇸🇮 Slovenia, 🇸🇰 Slovakia, 🇸🇻 El Salvador, 🇹🇭 Thailand, 🇺🇦 Ukraine, 🇺🇸 United States of America, 🇺🇾 Uruguay, 🇻🇳 Viet Nam, and 🇿🇦 South Africa</country>
+      <state>Delaware</state>
+      <skills>AWS, Azure, Node.js, Python, React, Ruby, Ruby on Rails, Engineer, Developer, Full Stack Dev, Full Time, English, GCP, and TypeScript</skills>
+      <category>Full-Stack Programming</category>
+      <type>Full-Time</type>
+      <description>&lt;img src="https://we-work-remotely.imgix.net/logos/0099/5988/logo.gif?ixlib=rails-4.0.0&amp;w=50&amp;h=50&amp;dpr=2&amp;fit=fill&amp;auto=compress" /&gt;
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; New York, NY
+    &lt;br /&gt;&lt;strong&gt;URL:&lt;/strong&gt; &lt;a href="https://lemon.io"&gt;https://lemon.io&lt;/a&gt;
+&lt;/p&gt;
+
+&lt;p&gt;Are you a talented Senior Developer looking for a remote job that lets you show your skills and get decent compensation? Look no further than &lt;a href="https://lemon.io/for-developers/?utm_source=weworkremotely&amp;amp;utm_medium=job_ad&amp;amp;utm_campaign=supply_en_react_node/python/ruby_oct_2026_job_ad"&gt;Lemon.io&lt;/a&gt; — the marketplace that connects you with hand-picked startups in the US and Europe.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;What we offer:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The rate depends on your seniority level, skills and experience. We've already paid out over $11M to our engineers.&lt;/li&gt;
+&lt;li&gt;No more hunting for clients or negotiating rates — let us handle the business side of things so you can focus on what you do best.&lt;/li&gt;
+&lt;li&gt;We'll manually find the best project for you according to your skills and preferences.&lt;/li&gt;
+&lt;li&gt;Choose a schedule that works best for you. It’s possible to communicate async or minimally overlap within team working hours.&lt;/li&gt;
+&lt;li&gt;We respect your seniority so you can expect no micromanagement or screen trackers.&lt;/li&gt;
+&lt;li&gt;Communicate directly with the clients. Most of them have technical backgrounds. Sounds good, yeah?&lt;/li&gt;
+&lt;li&gt;We will support you from the time you submit the application throughout all cooperation stages.&lt;/li&gt;
+&lt;li&gt;Most of our projects involve working in a fast-paced startup environment. We hope you like it as much as we do.&lt;/li&gt;
+&lt;li&gt;Through our community, we will connect you with the best developers from more than 75 countries.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;strong&gt;Requirements for the Senior React &amp;amp; Python Position:&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;4+ years of software development experience.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Commercial experience:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;React.js 3+ years &amp;amp; Python 3+ years&lt;/p&gt;
+&lt;p&gt;OR&lt;br&gt;React.js 2+ years &amp;amp; Python 5+ years&lt;br&gt;OR&lt;br&gt;React.js 5+ years &amp;amp; Python 2+ years&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Experience with AWS, GCP, or Azure is required.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;strong&gt;Requirements for the Senior Node &amp;amp; React Position:&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;5+ years of software development experience&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Commercial experience:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;React.js: 3+ years, Node.js: 5+ years, and Next.js: 2+ years&lt;br&gt;&lt;strong&gt;OR&lt;/strong&gt;&lt;br&gt;React.js: 5+ years, Node.js: 3+ years, and Next.js: 2+ years&lt;/li&gt;
+&lt;li&gt;Expertise in TypeScript, AWS and AI-assisted coding is a must.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;strong&gt;Requirements for the Senior Ruby &amp;amp; React Position:&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;5+ years of software development experience&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Commercial experience:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;React.js: 2+ years, Ruby: 5+ years&lt;br&gt;&lt;strong&gt;OR&lt;/strong&gt;&lt;br&gt;React.js: 5+ years, Ruby: 2+ years&lt;/li&gt;
+&lt;li&gt;Experience with AWS, GCP, or Azure is required.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Other requirements:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Strong technical skills: as a Senior Developer, you are expected to be able to create projects from scratch and have a deep understanding of application architecture.&lt;/li&gt;
+&lt;li&gt;Clear and effective communication in English — advanced ability to discuss business tasks, justify decisions, and communicate issues. Good self-presentation is also essential for upcoming client calls.&lt;/li&gt;
+&lt;li&gt;Strong self-organizational skills — ability to work full-time remotely with no supervision.&lt;/li&gt;
+&lt;li&gt;Reliability — we want to trust you and expect that you won’t let us and the client down.&lt;/li&gt;
+&lt;li&gt;Adaptability and Flexibility — the ability to onboard the project promptly after accepting it and start delivering results quickly.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Sounds good for you? Apply now and join the &lt;a href="https://lemon.io/for-developers/?utm_source=weworkremotely&amp;amp;utm_medium=job_ad&amp;amp;utm_campaign=supply_en_react_node/python/ruby_oct_2026_job_ad"&gt;Lemon.io&lt;/a&gt; community!&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;NOT YOUR TECH STACK?&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;We're placing Senior Developers (4+ yrs commercial experience) across AI Agent Architecture, AI Automation Architecture, AI Engineering, Site Reliability Engineering, Platform Engineering, Enterprise Software Engineering, React &amp;amp; Golang, Golang, React &amp;amp; Java, Ruby, PHP &amp;amp; Vue, Vue &amp;amp; Node.js, React &amp;amp; .NET, Android &amp;amp; iOS, iOS &amp;amp; Swift, Flutter &amp;amp; Firebase, Solutions Engineer, Blockchain (Ethereum/Ethers.js/Wagmi/Viem/Solana), Angular &amp;amp; Node.js, Vue &amp;amp; .NET, Python &amp;amp; Vue, DevOps, MLOps, Data Science, Angular &amp;amp; PHP, Angular &amp;amp; .NET, Symfony &amp;amp; React, Symfony &amp;amp; Vue, Symfony &amp;amp; Angular, Python, Symfony &amp;amp; JavaScript &amp;amp; Next.js &amp;amp; TypeScript, Data Analysis, React &amp;amp; PHP, Data Engineering, Project Management, Product Management, QA Automation, QA Manual, Embedded Software Engineering, React Native &amp;amp; Node, React Native &amp;amp; React, React Native &amp;amp; Ruby, React Native &amp;amp; Python, WordPress, Android, Angular, Python &amp;amp; Node, Java &amp;amp; Spring, Svelte &amp;amp; Python, Svelte &amp;amp; Node.js, Svelte &amp;amp; TypeScript, Rust, Shopify &amp;amp; JavaScript, Vue &amp;amp; Nuxt, PHP &amp;amp; Laravel, UI/UX Design, Animation, Graphic Design, React &amp;amp; Node &amp;amp; React Native, .NET &amp;amp; C#, Electron, Scala, C++, Unreal Engine &amp;amp; C++, Python &amp;amp; LLM, Unity, or Machine Learning Engineering and more. Reach out and we'll match you.&lt;/p&gt;
+&lt;p&gt;We do not provide visa assistance, and our cooperation model does not include the benefits typically offered with direct hire.&lt;/p&gt;
+&lt;p&gt;We work with developers from 75+ countries across Europe, Latin America, North America (the U.S. and Canada), selected countries in Asia (Japan, Singapore, South Korea, the Philippines, Indonesia, Malaysia, Vietnam, Thailand, and Israel), Oceania (Australia, New Zealand, and Papua New Guinea), and Africa (including Morocco and South Africa).&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/lemon-io-senior-react-full-stack-developer-7"&gt;https://weworkremotely.com/remote-jobs/lemon-io-senior-react-full-stack-developer-7&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Fri, 09 Oct 2026 13:49:21 +0000</pubDate>
+      <expires_at>Sun, 08 Nov 2026 13:49:21 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/lemon-io-senior-react-full-stack-developer-7</guid>
+      <link>https://weworkremotely.com/remote-jobs/lemon-io-senior-react-full-stack-developer-7</link>
+    </item>
+<item>
+      <title>Upstart: Applied Scientist Intern</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>All Other Remote</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; United States | Remote
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;&lt;strong&gt;About Upstart&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;At Upstart, we’re united by a mission that matters: to radically reduce the cost and complexity of borrowing for all Americans. Every day, we bring creativity, experimentation, and advanced AI to reshape access to credit, helping millions move forward financially with clarity and confidence.&lt;/p&gt;
+&lt;p&gt;As the leading AI lending marketplace, we partner with banks and credit unions to expand access to affordable credit through technology that’s both radically intelligent and deeply human. Our platform runs over one million predictions per borrower using more than 3,000 signals, powering smarter, fairer decisions for millions of customers. But the numbers only hint at the impact. Every idea, every voice, and every contribution moves us closer to a world where credit never stands between people and their financial progress.&lt;/p&gt;
+&lt;p&gt;We’re proudly digital-first, giving most Upstarters the flexibility to do their best work from wherever they thrive, alongside teammates across 80+ cities in the US and Canada. Digital-first doesn’t mean distant. We’re intentional about in-person connection through team onsites, planning sessions, and moments that spark creativity and trust. And whether you choose to work primarily from home or collaborate in-person from one of our offices in Columbus, Austin, the Bay Area, or New York City, you’ll have the support to work in the way that works best for you.&lt;/p&gt;
+&lt;p&gt;If you’re energized by tackling meaningful problems, excited to innovate with purpose, and motivated by work that truly matters, we’d love to hear from you.&lt;/p&gt;&lt;/div&gt;&lt;div class="sc-kkmypM jItuJQ MuiStack-root"&gt;&amp;nbsp;&lt;/div&gt;
+&lt;p&gt;&lt;strong&gt;The Role&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;As an Applied Scientist Intern, you will become a specialist in our models, products, business and/or codebase. You will identify potential problems or opportunities for improvement, communicate these to the team and suggest solutions. This involves self-directed investigation, offline analyses using creative thinking as well as presentation to the ML team. You will receive mentorship from experienced ML practitioners and collaborate closely with the team to improve our products and models.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;How you’ll make an impact&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Research machine learning and statistical approaches to discover improvements to the predictive performance and/or business value of a model.&lt;/li&gt;
+&lt;li&gt;Design, implement, and evaluate model, product, or technical enhancements using rigorous experimentation and validation methods.&lt;/li&gt;
+&lt;li&gt;Translate research findings into clear recommendations, documented methodologies, and production-ready solutions.&lt;/li&gt;
+&lt;li&gt;Work with your mentor to align stakeholders, and drive next steps.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Minimum Qualifications&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Bachelor. Masters or PHD degree in mathematics, statistics, physics, econometrics, computer science, or a related quantitative field. On track to graduate by 2028.&lt;/li&gt;
+&lt;li&gt;Strong fundamentals in statistical, probability, and machine learning theory.&lt;/li&gt;
+&lt;li&gt;Ability to perform data analysis and evaluate machine learning or statistical models using Python, as well as basic SQL foundations.&lt;/li&gt;
+&lt;li&gt;Intellectual curiosity, humility, drive and teamwork.&lt;/li&gt;
+&lt;li&gt;Strong communication skills.&lt;/li&gt;
+&lt;li&gt;Ability to use modern agentic tooling (Claude Code, Codex, …) efficiently.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Preferred Qualifications&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Phd in mathematics, statistics, physics, econometrics, computer science, or a related quantitative field. On track to graduate by the summer of 2028.&lt;/li&gt;
+&lt;li&gt;Experience in supervised learning, model evaluation, and feature engineering techniques.&lt;/li&gt;
+&lt;li&gt;Advanced statistical (frequentist, bayesian, causal) theory/econometrics knowledge.&lt;/li&gt;
+&lt;li&gt;Strong coding skills in Python.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Position location&lt;/strong&gt; This role is Fully Remote&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Travel requirements&lt;/strong&gt; As a digital first company, the majority of your work can be accomplished remotely. The majority of our employees can live and work anywhere in the U.S but are encouraged to to still spend high quality time in-person collaborating via regular onsites. To this end, over the course of the internship, you will meet to collaborate once or twice, for 2-4 consecutive days at a time.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;What you'll love&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;At Upstart, our intern benefits are designed to support your health, financial well-being, and everyday needs while you’re here. Here’s what you can expect:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Comprehensive medical, dental and vision coverage Health Savings Account (HSA), including $800 in employer funding for employee-only coverage or $1,600 when covering dependents&lt;/li&gt;
+&lt;li&gt;A $150 monthly medical opt-out credit if you choose to waive Upstart’s health plan&lt;/li&gt;
+&lt;li&gt;Income protection benefits, including life insurance and disability coverage for added financial security&lt;/li&gt;
+&lt;li&gt;Access to Flex Spending Accounts to manage eligible health and caregiving expenses with pre-tax dollars&lt;/li&gt;
+&lt;li&gt;Pre-tax commuter program to help with eligible transportation expenses&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;#LI-REMOTE&lt;/p&gt;
+&lt;p&gt;#LI-Internship&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;div class="content-pay-transparency"&gt;&lt;div class="pay-input"&gt;&lt;div class="description"&gt;&lt;p&gt;&lt;span&gt;At Upstart, your base pay is one part of your total compensation package.&amp;nbsp; The anticipated base salary for this position is expected to be within the below range. Your actual base pay will depend on your geographic location–with our “digital first” philosophy, Upstart uses compensation regions that vary depending on location. Individual pay is also determined by job-related skills, experience, and relevant education or training. Your recruiter can share more about the specific salary range for your preferred location during the hiring process.&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;In addition, Upstart provides employees with target bonuses, equity compensation, and generous benefits packages (including medical, dental, vision, and 401k).&lt;/span&gt;&lt;/p&gt;&lt;/div&gt;&lt;div class="title"&gt;United States | Remote -  Anticipated Base Salary Range&lt;/div&gt;&lt;div class="pay-range"&gt;&lt;span&gt;$141,000&lt;/span&gt;&lt;span class="divider"&gt;—&lt;/span&gt;&lt;span&gt;$150,000 USD&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class="content-conclusion"&gt;&lt;p&gt;&lt;strong&gt;What you'll love&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;At Upstart, our benefits for full-time employees are designed to support your health, financial well-being, family, and personal growth. Here’s what you can expect:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Competitive compensation, including base pay, bonus opportunities, and annual equity grants that vest quarterly&amp;nbsp;&lt;/li&gt;
+&lt;li&gt;Retirement benefits to help you plan for the future, including a 401(k) or Group Retirement Savings Plan with a company match of $2 for every $1 contributed, up to $15,000 annually (USD in the US, CAD in Canada)&lt;/li&gt;
+&lt;li&gt;Employee Stock Purchase Plan (ESPP) with discounted stock purchase options for eligible employees (US only)&lt;/li&gt;
+&lt;li&gt;Comprehensive health coverage designed to support you and your family, including medical, dental, vision, and wellness resources for US and supplemental health coverage for Canada.&lt;/li&gt;
+&lt;li&gt;Health Savings Account contributions from Upstart for eligible plans (US only)&lt;/li&gt;
+&lt;li&gt;Income protection benefits, including life insurance and disability coverage for added financial security&lt;/li&gt;
+&lt;li&gt;Paid time off, sick leave, and company holidays, in line with local requirements&lt;/li&gt;
+&lt;li&gt;Paid family and parental leave to support caregiving and major life moments (duration varies by country)&lt;/li&gt;
+&lt;li&gt;Family-centered benefits to support fertility, parenthood, and caregiving needs&lt;/li&gt;
+&lt;li&gt;Employee Assistance Program (EAP) offering mental health support and life-centered resources&lt;/li&gt;
+&lt;li&gt;Financial wellness resources, including access to financial planning tools and a financial concierge service (US Only)&lt;/li&gt;
+&lt;li&gt;Annual wellness allowance to support your physical and emotional well-being and personal development, based on what matters most to you&lt;/li&gt;
+&lt;li&gt;Annual productivity allowance to invest in relevant tools and resources you need to do your best work, no matter where you work from&lt;/li&gt;
+&lt;li&gt;Connection and community through team events, all-company updates, and employee resource groups (ERGs)&lt;/li&gt;
+&lt;li&gt;Onsite perks, including catered lunches and fully stocked micro-kitchens when working from one of our offices in the Bay Area, Austin, Columbus, and New York City&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;For roles based in Canada, please note that we are not currently able to hire in Quebec.&lt;/p&gt;
+&lt;p&gt;Upstart is a proud Equal Opportunity Employer. Just as we are dedicated to improving access to affordable credit for all, we are committed to inclusive and fair hiring practices.&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;If you require reasonable accommodation in completing an application, interviewing, completing any pre-employment testing, or otherwise participating in the employee selection process, please email candidate_accommodations@upstart.com&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://www.upstart.com/candidate_privacy_policy"&gt;https://www.upstart.com/candidate_privacy_policy&lt;/a&gt;&lt;/p&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/upstart-applied-scientist-intern"&gt;https://weworkremotely.com/remote-jobs/upstart-applied-scientist-intern&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Fri, 09 Oct 2026 07:31:09 +0000</pubDate>
+      <expires_at>Sun, 08 Nov 2026 07:31:09 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/upstart-applied-scientist-intern</guid>
+      <link>https://weworkremotely.com/remote-jobs/upstart-applied-scientist-intern</link>
+    </item>
+<item>
+      <title>Amwell: Lead Digital Marketing Manager</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Sales and Marketing</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Remote US
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;Company Description&lt;/p&gt;
+&lt;p&gt;At Amwell, we’re transforming healthcare for all—powered by technology and inspired by people. Here, your ideas don’t just matter—they drive real change, improving lives on a global scale.&lt;/p&gt;
+&lt;p&gt;We marry technology and innovation with clinical excellence to provide trusted solutions that solve the healthcare industry’s biggest pain points and are on a mission to&lt;strong&gt; enable greater access to more convenient, affordable, and effective care. &lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;We do this through our technology-enabled care platform that is designed to help our clients achieve their digital care ambitions – today and in the future. We offer &lt;/strong&gt;programs spanning the &lt;strong&gt;full care continuum&lt;/strong&gt;, including urgent, acute and specialty care, behavioral health, and services for the treatment of chronic conditions such as heart and cardiometabolic diseases. Programs are powered by Amwell as well as our growing partner network.&lt;/p&gt;
+&lt;p&gt;For almost &lt;strong&gt;two decades,&lt;/strong&gt; Amwell has proudly served some of the largest and most sophisticated healthcare organizations in the U.S. and worldwide. Our team is passionate about technology’s role in transforming care delivery and making it more equitable, accessible, efficient, cost-effective and navigable for all.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;Brief Overview&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;This role owns Amwell's marketing web estate and how discoverable it is, across four properties: SilverCloud, business.amwell.com, patients.amwell.com, and LiveHealthOnline. Accountability covers performance and conversion on those properties, the compliance posture of what runs on them, and discoverability as search behavior shifts toward AI-generated answers.&lt;/p&gt;
+&lt;p&gt;The role directs work rather than performing all of it. Engineering owns development capacity and Design owns visual execution; this role defines, sequences, and holds the quality of the work both produce for the web estate. Page content and messaging remain with the pillar that owns each page, so this role owns the platform and its performance rather than what the pages say.&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Core Responsibilities&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;What the role owns:&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• The four web properties — performance, conversion, and delivery&lt;/p&gt;
+&lt;p&gt;• Web compliance and governance, including cookie consent and tracking governance&lt;/p&gt;
+&lt;p&gt;• GEO and AI-answer discoverability across the properties, alongside conventional search performance&lt;/p&gt;
+&lt;p&gt;• Definition and sequencing of website build and development work delivered by Engineering&lt;/p&gt;
+&lt;p&gt;• Coordination with the separate Design team on visual work for the estate&lt;/p&gt;
+&lt;p&gt;• The web roadmap and the case for what it returns&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;How success is measured:&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• Conversion performance across the four properties, and measured improvement in GEO and AI-answer discoverability (primary measurable output)&lt;/p&gt;
+&lt;p&gt;• Web property performance, including speed and core experience measures&lt;/p&gt;
+&lt;p&gt;• Tracking-compliance coverage across the estate&lt;/p&gt;
+&lt;p&gt;• Delivery of the web roadmap against plan&lt;/p&gt;
+&lt;p&gt;• Contribution of web to demand and engagement funnels&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;What the role does not own:&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;Scope boundaries are explicit, so accountability is single-owned and hand-offs are clean.&lt;/p&gt;
+&lt;p&gt;• Page content and messaging — each pillar owns what its own pages say&lt;/p&gt;
+&lt;p&gt;• Product application surfaces — Product&lt;/p&gt;
+&lt;p&gt;• Engineering development capacity itself — Engineering owns the resource; this role directs the work&lt;/p&gt;
+&lt;p&gt;• Visual design execution — the separate Design team&lt;/p&gt;
+&lt;p&gt;• Off-site authority and earned citations — Brand and Corporate Marketing with the external agency&lt;/p&gt;
+&lt;p&gt;• Paid media and demand strategy — Demand Generation Manager&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Qualifications&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;• 7+ years in web, digital marketing, or growth, with direct ownership of a web estate&lt;/p&gt;
+&lt;p&gt;• A track record of moving a conversion measure on owned properties, not only of shipping site work&lt;/p&gt;
+&lt;p&gt;• Technical SEO depth, and demonstrated engagement with GEO and AI-answer discoverability&lt;/p&gt;
+&lt;p&gt;• Experience directing engineering delivery without owning the engineering resource&lt;/p&gt;
+&lt;p&gt;• Web compliance and tracking governance experience, including consent management&lt;/p&gt;
+&lt;p&gt;• Analytics fluency sufficient to defend what the web numbers claim&lt;/p&gt;
+&lt;p&gt;• The ability to hold a roadmap across competing stakeholder demands from multiple pillars&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;Preferred&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• Healthcare or other regulated-industry web experience, including accessibility obligations&lt;/p&gt;
+&lt;p&gt;• Multi-property or multi-brand estate management&lt;/p&gt;
+&lt;p&gt;• CMS migration or replatforming experience&lt;/p&gt;
+&lt;p&gt;• Experience establishing GEO measurement where no baseline existed&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Do Well. Live Well. At Amwell.&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Driven by our mission and values, we foster a workplace where Delivering Awesome, being Customer First and operating as One Team aren’t just aspirations – they are how we work, every day.&amp;nbsp;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;Our people are our greatest asset. We strive to empower their growth and development not only as Amwellians but as individuals, through generous total rewards packages, a virtual-first work environment, work-life flexibility, including Summer Fridays and designated Mental Health Days, as well as opportunities to stretch and learn – to name a few. It’s our people who truly differentiate us. Ask anyone and they’ll tell you – you’ll never work with more passionate, more driven and more caring team members.&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;We champion a culture of respect and inclusion, accountability and integrity, innovation and collaboration. At Amwell, you’ll do the most meaningful work of your career—improving healthcare for millions, growing alongside incredible teammates, and being valued for who you are.&amp;nbsp;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Benefits&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Flexible Personal Time Off (Vacation time)&lt;/li&gt;
+&lt;li&gt;401K match&lt;/li&gt;
+&lt;li&gt;Competitive healthcare, dental and vision insurance plans&lt;/li&gt;
+&lt;li&gt;Paid Parental Leave (Maternity and Paternity leave)&lt;/li&gt;
+&lt;li&gt;Employee Stock Purchase Program&lt;/li&gt;
+&lt;li&gt;Free access to Amwell’s Telehealth Services, SilverCloud and The Clinic by Cleveland Clinic’s second opinion program&lt;/li&gt;
+&lt;li&gt;Free Subscription to the Calm App&lt;/li&gt;
+&lt;li&gt;Tuition Assistance Program&lt;/li&gt;
+&lt;li&gt;Pet Insurance&amp;nbsp;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Salaried, Exempt Roles&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;The typical base salary range for this position is $121,950 - $149,050.&amp;nbsp; The actual salary offer will ultimately depend on multiple factors including, but not limited to, knowledge, skills, relevant education, experience, complexity or specialization of talent, and other objective factors.&amp;nbsp; In addition to base salary, this role may be eligible for an annual bonus based on a combination of company performance and employee performance. Long-term incentive and short-term variable compensation may be offered as part of the compensation package dependent on the role. Some roles may be commission based, in which case the total compensation will be based on a commission, and the above range may not be an accurate representation of total compensation.&lt;/p&gt;
+&lt;p&gt;Further, the above range is subject to change based on market demands and operational needs and does not constitute a promise of a particular wage or a guarantee of employment. Your recruiter can share more during the hiring process about the specific salary range based on the above factors listed.&lt;/p&gt;
+&lt;div&gt;
+&lt;h3&gt;Fraud Prevention Notice&lt;/h3&gt;
+&lt;p&gt;As part of Amwell's commitment to maintaining a secure and trusted hiring process, Amwell uses fraud detection capabilities within its hiring platform to help identify potentially suspicious, fraudulent, or unauthorized activity during the recruitment process.&lt;/p&gt;
+&lt;p&gt;These tools are designed to help protect candidates, Amwell, and the integrity of the hiring process by identifying indicators that may be associated with impersonation, account misuse, or other forms of recruiting fraud. Information generated through fraud detection is reviewed by authorized personnel and is not used as the sole basis for hiring decisions.&lt;/p&gt;
+&lt;p&gt;Personal information collected or processed in connection with fraud detection will be handled in accordance with applicable data protection laws and Amwell's Applicant Privacy Notice.&lt;/p&gt;
+&lt;/div&gt;
+&lt;h3&gt;Identity Verification Notice&lt;/h3&gt;
+&lt;p&gt;&lt;span&gt;As part of Amwell's commitment to&amp;nbsp;maintaining&amp;nbsp;a secure and trusted hiring process, candidates for this role&amp;nbsp;are required to&amp;nbsp;complete an identity verification step through Greenhouse Identity Verification powered by CLEAR during the interview process.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Identity verification is used solely to confirm a candidate's identity and help prevent fraud and impersonation within the hiring process. It is not a background check and does not independently&amp;nbsp;determine&amp;nbsp;hiring decisions.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Because this role has been&amp;nbsp;designated&amp;nbsp;as requiring identity verification, completion of the verification process is a condition of continuing in the recruitment process. Candidates who do not complete the identity verification process will not be eligible to advance to&amp;nbsp;subsequent&amp;nbsp;stages of consideration for this role.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Personal information collected as part of the identity verification process will be handled&amp;nbsp;in accordance with&amp;nbsp;applicable privacy laws and Amwell's Applicant Privacy Notice.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://business.amwell.com/company/privacy-notice-US-applicants"&gt;https://business.amwell.com/company/privacy-notice-US-applicants&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;div class="content-conclusion"&gt;&lt;p&gt;Privacy Notice&amp;nbsp;&lt;/p&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/amwell-lead-digital-marketing-manager"&gt;https://weworkremotely.com/remote-jobs/amwell-lead-digital-marketing-manager&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Fri, 09 Oct 2026 07:31:09 +0000</pubDate>
+      <expires_at>Sun, 08 Nov 2026 07:31:09 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/amwell-lead-digital-marketing-manager</guid>
+      <link>https://weworkremotely.com/remote-jobs/amwell-lead-digital-marketing-manager</link>
+    </item>
+<item>
+      <title>Stripe: Account Executive Product - Fraud &amp; Risk</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Sales and Marketing</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Chicago, Seattle, NYC, San Francisco, Remote 
+&lt;/p&gt;
+
+&lt;h2&gt;&lt;strong&gt;Who we are&lt;/strong&gt;&lt;/h2&gt;
+&lt;h3&gt;&lt;strong&gt;About Stripe&lt;/strong&gt;&lt;/h3&gt;
+&lt;p&gt;Stripe is a financial infrastructure platform for businesses. Millions of companies - from the world’s largest enterprises to the most ambitious startups - use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Our mission is to increase the GDP of the internet, and we have a staggering amount of work ahead. That means you have an unprecedented opportunity to put the global economy within everyone's reach while doing the most important work of your career.&lt;/p&gt;
+&lt;h3&gt;&lt;strong&gt;About the team&lt;/strong&gt;&lt;/h3&gt;
+&lt;p&gt;Product Sales is a team of deep functional and technical specialists who both lead and advise on deals for the most strategically important products in Stripe’s portfolio. Stripe is investing in building out its Fraud &amp;amp; Risk Product Sales team and as an Account Executive you will be a critical part of the team driving the growth of this product.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;What you’ll do&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;As an Account Executive, Product focusing on Fraud &amp;amp; Risk products, you will use your sales and product expertise to help drive product market fit &amp;amp; growth of Stripe’s fraud fighting products and solutions. You will collaborate with product, engineering and marketing teams to develop deep product and industry knowledge and drive strategic deals. You will be instrumental in leading in depth product discussions with existing and prospect users globally – and building and executing against our go to market strategy.&lt;/p&gt;
+&lt;p&gt;You are an adept salesperson, capable of engaging in business-level and technical conversations at multiple levels of the organization, including CEOs, CTOs, and Chief Risk Officers. You are used to building value in competitive situations and enjoy working on products that require deep product understanding. You’re as comfortable working with clients as with internal stakeholders (including executives). You’re excited to become an expert and to share your knowledge. You’re an organized self-starter, an excellent communicator who is highly analytical and has a track record for improving the processes and organizations around you.&lt;/p&gt;
+&lt;h3&gt;&lt;strong&gt;Responsibilities&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Drive new business and revenue growth by selling Radar, Managed Risk, Dispute Resolution, and more, to a variety of businesses&amp;nbsp;&lt;/li&gt;
+&lt;li&gt;Lead complex new and expansion deals related to Stripe’s Fraud &amp;amp; Risk product offerings, capabilities, and tailored solutions&lt;/li&gt;
+&lt;li&gt;Deeply understand the sales process and what competitors offer in terms of fraud fighting capabilities, with a strong emphasis to overcoming competition to win all deals&lt;/li&gt;
+&lt;li&gt;Synthesize and relay customer feedback and findings to inform Stripe’s product roadmap&lt;/li&gt;
+&lt;li&gt;Engage with Product, Marketing and Account teams to help amplify our growth trajectory globally&lt;br&gt;&lt;br&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;&lt;strong&gt;Who you are&lt;/strong&gt;&lt;/h2&gt;
+&lt;p&gt;We’re looking for someone who meets the minimum requirements to be considered for the role. If you meet these requirements, you are encouraged to apply. The preferred qualifications are a bonus, not a requirement.&lt;/p&gt;
+&lt;h3&gt;&lt;strong&gt;Requirements&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;10+ years of customer facing experience at a leading technology or payments company and a track record of top performance, working specifically on enterprise or strategic accounts&lt;/li&gt;
+&lt;li&gt;Display a deep passion for fraud prevention and develop deep expertise&amp;nbsp;&lt;/li&gt;
+&lt;li&gt;A proven ability to build strong collaborative working relationships with business partners internally and externally&lt;/li&gt;
+&lt;li&gt;The ability to deal effectively with ambiguity and thrive in an unstructured, fast-moving environment&lt;/li&gt;
+&lt;li&gt;Experience building trusted advisor relationships with senior business leaders&lt;/li&gt;
+&lt;li&gt;Self-starter capable of operating independently to drive meaningful business results&lt;/li&gt;
+&lt;li&gt;Ability to understand complex technical requirements and craft solutions across multiple stakeholders&lt;/li&gt;
+&lt;li&gt;Proven experience to lead complex negotiations involving bespoke commercial agreements&lt;br&gt;&lt;br&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;strong&gt;Preferred Qualifications&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;5+ years of experience specifically selling fraud solutions for payments to enterprise customers&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/stripe-account-executive-product-fraud-risk"&gt;https://weworkremotely.com/remote-jobs/stripe-account-executive-product-fraud-risk&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Fri, 09 Oct 2026 07:31:09 +0000</pubDate>
+      <expires_at>Sun, 08 Nov 2026 07:31:09 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/stripe-account-executive-product-fraud-risk</guid>
+      <link>https://weworkremotely.com/remote-jobs/stripe-account-executive-product-fraud-risk</link>
+    </item>
+<item>
+      <title>Amwell: Content Marketing Manager</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Sales and Marketing</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Remote US
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;Company Description&lt;/p&gt;
+&lt;p&gt;At Amwell, we’re transforming healthcare for all—powered by technology and inspired by people. Here, your ideas don’t just matter—they drive real change, improving lives on a global scale.&lt;/p&gt;
+&lt;p&gt;We marry technology and innovation with clinical excellence to provide trusted solutions that solve the healthcare industry’s biggest pain points and are on a mission to&lt;strong&gt; enable greater access to more convenient, affordable, and effective care. &lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;We do this through our technology-enabled care platform that is designed to help our clients achieve their digital care ambitions – today and in the future. We offer &lt;/strong&gt;programs spanning the &lt;strong&gt;full care continuum&lt;/strong&gt;, including urgent, acute and specialty care, behavioral health, and services for the treatment of chronic conditions such as heart and cardiometabolic diseases. Programs are powered by Amwell as well as our growing partner network.&lt;/p&gt;
+&lt;p&gt;For almost &lt;strong&gt;two decades,&lt;/strong&gt; Amwell has proudly served some of the largest and most sophisticated healthcare organizations in the U.S. and worldwide. Our team is passionate about technology’s role in transforming care delivery and making it more equitable, accessible, efficient, cost-effective and navigable for all.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;Brief Overview&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;This role produces member-facing content across Amwell's service lines and is accountable for how that content performs once it reaches members. Content is a shared capability across the Engagement pillar: the account owners brief and approve, and this role produces at the volume and quality the book requires.&lt;/p&gt;
+&lt;p&gt;The role covers content strategy across service lines, the Engagement Hub content library, and the production of case studies and enablement assets that the account owners design. It also directs contractor and AI-assisted capacity, which is how volume is met with a single full-time position. Content engagement is a shared measure with the execution side, which owns timing and deliverability&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Core Responsibilities&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;What the role owns:&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• Content strategy and production across service lines, the engagement showcase, and content libraries&lt;/p&gt;
+&lt;p&gt;• Inputting email content into the email CMS (Knak) — copy and image selection&lt;/p&gt;
+&lt;p&gt;• The Engagement Hub content library and its maintenance&lt;/p&gt;
+&lt;p&gt;• Case-study and enablement-asset production, against designs set by the account owners&lt;/p&gt;
+&lt;p&gt;• AI-assisted drafting and direction of contractor capacity for volume, within the approved content guidelines&lt;/p&gt;
+&lt;p&gt;• Brand-voice consistency across member-facing content&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;How success is measured:&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• Content engagement across member-facing email and hub content, as the content contribution to open and click performance (primary measurable output)&lt;/p&gt;
+&lt;p&gt;• Content throughput and turnaround against briefs&lt;/p&gt;
+&lt;p&gt;• Brand-voice and quality consistency across the library&lt;/p&gt;
+&lt;p&gt;• Coverage of the service lines against the content plan&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;What the role does not own:&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;Scope boundaries are explicit so accountability is single-owned and hand-offs are clean.&lt;/p&gt;
+&lt;p&gt;• Campaign strategy or the customer relationship — the account owners&lt;/p&gt;
+&lt;p&gt;• The CMS platform itself, its branding rules, templates, and access — Manager, Campaign Production and Platform&lt;/p&gt;
+&lt;p&gt;• Campaign build, QA, and send — the campaign production team&lt;/p&gt;
+&lt;p&gt;• Timing and deliverability of sends, which share the engagement measure&lt;/p&gt;
+&lt;p&gt;• Foundational B2B content such as case studies, playbooks, and whitepapers — Commercialization&lt;/p&gt;
+&lt;p&gt;• PHI governance standards, which are set by Compliance&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Qualifications&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;Required&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• 5+ years producing consumer, member, or patient-facing content at volume&lt;/p&gt;
+&lt;p&gt;• Demonstrated ability to move a content engagement measure, not only to ship content on time&lt;/p&gt;
+&lt;p&gt;• Experience writing within regulated or clinically sensitive constraints, and the judgment to know when to route something to Compliance or Legal&lt;/p&gt;
+&lt;p&gt;• Experience directing freelance, agency, or contractor capacity against a brief&lt;/p&gt;
+&lt;p&gt;• Working fluency with AI-assisted drafting, and the editorial judgment to hold quality across it&lt;/p&gt;
+&lt;p&gt;• Comfort operating as shared capacity across competing internal demands&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;Preferred&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;• Healthcare, health plan, or behavioral health content experience&lt;/p&gt;
+&lt;p&gt;• Knak, Braze, or comparable content and email production platforms&lt;/p&gt;
+&lt;p&gt;• Accessibility standards for member communications&lt;/p&gt;
+&lt;p&gt;• Experience building or restructuring a content library&lt;/p&gt;
+&lt;p&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Do Well. Live Well. At Amwell.&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Driven by our mission and values, we foster a workplace where Delivering Awesome, being Customer First and operating as One Team aren’t just aspirations – they are how we work, every day.&amp;nbsp;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;Our people are our greatest asset. We strive to empower their growth and development not only as Amwellians but as individuals, through generous total rewards packages, a virtual-first work environment, work-life flexibility, including Summer Fridays and designated Mental Health Days, as well as opportunities to stretch and learn – to name a few. It’s our people who truly differentiate us. Ask anyone and they’ll tell you – you’ll never work with more passionate, more driven and more caring team members.&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;We champion a culture of respect and inclusion, accountability and integrity, innovation and collaboration. At Amwell, you’ll do the most meaningful work of your career—improving healthcare for millions, growing alongside incredible teammates, and being valued for who you are.&amp;nbsp;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Benefits&amp;nbsp;&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Flexible Personal Time Off (Vacation time)&lt;/li&gt;
+&lt;li&gt;401K match&lt;/li&gt;
+&lt;li&gt;Competitive healthcare, dental and vision insurance plans&lt;/li&gt;
+&lt;li&gt;Paid Parental Leave (Maternity and Paternity leave)&lt;/li&gt;
+&lt;li&gt;Employee Stock Purchase Program&lt;/li&gt;
+&lt;li&gt;Free access to Amwell’s Telehealth Services, SilverCloud and The Clinic by Cleveland Clinic’s second opinion program&lt;/li&gt;
+&lt;li&gt;Free Subscription to the Calm App&lt;/li&gt;
+&lt;li&gt;Tuition Assistance Program&lt;/li&gt;
+&lt;li&gt;Pet Insurance&amp;nbsp;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Salaried, Exempt Roles&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;The typical base salary range for this position is $90,000 - $110,000.&amp;nbsp; The actual salary offer will ultimately depend on multiple factors including, but not limited to, knowledge, skills, relevant education, experience, complexity or specialization of talent, and other objective factors.&amp;nbsp; In addition to base salary, this role may be eligible for an annual bonus based on a combination of company performance and employee performance. Long-term incentive and short-term variable compensation may be offered as part of the compensation package dependent on the role. Some roles may be commission based, in which case the total compensation will be based on a commission, and the above range may not be an accurate representation of total compensation.&lt;/p&gt;
+&lt;p&gt;Further, the above range is subject to change based on market demands and operational needs and does not constitute a promise of a particular wage or a guarantee of employment. Your recruiter can share more during the hiring process about the specific salary range based on the above factors listed.&lt;/p&gt;
+&lt;div&gt;
+&lt;h3&gt;Fraud Prevention Notice&lt;/h3&gt;
+&lt;p&gt;As part of Amwell's commitment to maintaining a secure and trusted hiring process, Amwell uses fraud detection capabilities within its hiring platform to help identify potentially suspicious, fraudulent, or unauthorized activity during the recruitment process.&lt;/p&gt;
+&lt;p&gt;These tools are designed to help protect candidates, Amwell, and the integrity of the hiring process by identifying indicators that may be associated with impersonation, account misuse, or other forms of recruiting fraud. Information generated through fraud detection is reviewed by authorized personnel and is not used as the sole basis for hiring decisions.&lt;/p&gt;
+&lt;p&gt;Personal information collected or processed in connection with fraud detection will be handled in accordance with applicable data protection laws and Amwell's Applicant Privacy Notice.&lt;/p&gt;
+&lt;/div&gt;
+&lt;h3&gt;Identity Verification Notice&lt;/h3&gt;
+&lt;p&gt;&lt;span&gt;As part of Amwell's commitment to&amp;nbsp;maintaining&amp;nbsp;a secure and trusted hiring process, candidates for this role&amp;nbsp;are required to&amp;nbsp;complete an identity verification step through Greenhouse Identity Verification powered by CLEAR during the interview process.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Identity verification is used solely to confirm a candidate's identity and help prevent fraud and impersonation within the hiring process. It is not a background check and does not independently&amp;nbsp;determine&amp;nbsp;hiring decisions.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Because this role has been&amp;nbsp;designated&amp;nbsp;as requiring identity verification, completion of the verification process is a condition of continuing in the recruitment process. Candidates who do not complete the identity verification process will not be eligible to advance to&amp;nbsp;subsequent&amp;nbsp;stages of consideration for this role.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Personal information collected as part of the identity verification process will be handled&amp;nbsp;in accordance with&amp;nbsp;applicable privacy laws and Amwell's Applicant Privacy Notice.&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://business.amwell.com/company/privacy-notice-US-applicants"&gt;https://business.amwell.com/company/privacy-notice-US-applicants&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;&lt;div class="content-conclusion"&gt;&lt;p&gt;Privacy Notice&amp;nbsp;&lt;/p&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/amwell-content-marketing-manager"&gt;https://weworkremotely.com/remote-jobs/amwell-content-marketing-manager&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Fri, 09 Oct 2026 07:31:02 +0000</pubDate>
+      <expires_at>Sun, 08 Nov 2026 07:31:02 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/amwell-content-marketing-manager</guid>
+      <link>https://weworkremotely.com/remote-jobs/amwell-content-marketing-manager</link>
+    </item>
+<item>
+      <title>Storyblok: Developer Relations Engineer - USA</title>
+      <region>Anywhere in the World</region>
+      <country></country>
+      <state></state>
+      <skills></skills>
+      <category>Sales and Marketing</category>
+      <type>Full-Time</type>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Remote
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;p&gt;Storyblok is a headless CMS that enables marketers and developers to create with joy and publish with confidence. It empowers you to deliver structured and consistent content everywhere: websites, apps, AI search, and beyond.&lt;/p&gt;
+&lt;p&gt;Legendary brands like Virgin Media O2, Oatly, and TomTom use Storyblok to make a bigger, faster market impact.&lt;/p&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;WHAT IS IN IT FOR YOU&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;You will be joining a growing company where you can contribute to many “firsts”. Plus these benefits:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Monthly remote work stipend (home internet costs, electricity). Home office equipment package right at the start (laptop, keyboard, monitor…)&lt;/li&gt;
+&lt;li&gt;Home office equipment upgrade (furniture, ear plugs …) or membership to a local co-working space after your onboarding&lt;/li&gt;
+&lt;li&gt;Sick leave benefit, parental leave and 25 days of annual leave plus your local national holidays&lt;/li&gt;
+&lt;li&gt;Personal development fund for courses, books, conferences, and material&lt;/li&gt;
+&lt;li&gt;The annual international team-building trip, quarterly and monthly online get-togethers&lt;/li&gt;
+&lt;li&gt;As a fully remote company, with work-life balance at its core, you’ll enjoy flexible schedules&lt;/li&gt;
+&lt;li&gt;An international team that loves to have fun at work and works hard together to accomplish shared goals&lt;/li&gt;
+&lt;/ul&gt;&lt;/div&gt;&lt;h2&gt;&lt;strong&gt;JOB SUMMARY&lt;/strong&gt;&lt;/h2&gt;
+&lt;p&gt;Storyblok and headless CMS authority support and reduce onboarding friction with the developer community through code sample creation, debugging, direct partner engagement, and long-tail support channels. Become a Storyblok advocate, talking about its capabilities and features. Help external developers to overcome missing functionalities or technical issues by using plugins, tools, apps, or custom scripts. Monitor external communities on Discord, Twitter, LinkedIn, and Dev.to to identify new content to create.&lt;/p&gt;
+&lt;h2&gt;&lt;strong&gt;ESSENTIAL JOB FUNCTIONS&lt;/strong&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Become a Storyblok and headless CMS authority, helping developers, partner agencies and customers to understand Storyblok and its capabilities, to easily implement a headless architecture on their projects, and to get the best from Storyblok’s features.&lt;/li&gt;
+&lt;li&gt;Help developers and enterprise customers to understand and get value out of Storyblok by conducting workshops, writing tutorials and documentation, attending webinars, recording instructional videos, and giving product demos.&lt;/li&gt;
+&lt;li&gt;Write sample applications, prototypes, and code samples to showcase the power and flexibility of Storyblok and the headless approach to content management.&lt;/li&gt;
+&lt;li&gt;Identify and document missing pieces and technical issues in Storyblok APIs, SDKs, and services&lt;/li&gt;
+&lt;li&gt;Help external developers to overcome missing functionalities or technical issues.&lt;/li&gt;
+&lt;li&gt;Contribute code updates and bug fixes to Storyblok’s public open-source projects (e.g. SDKs, sample applications, starter kits).&lt;/li&gt;
+&lt;li&gt;Propose new or enhanced features for the Storyblok Headless CMS based on the interaction with enterprise customers and the developer community.&lt;/li&gt;
+&lt;li&gt;Monitor, engage with and support the Storyblok community on Discord, Twitter, LinkedIn, and Dev.to.&lt;/li&gt;
+&lt;li&gt;Represent Storyblok at online and in-person events and public speaking opportunities, as well as leading the booth and participating in events sponsored by Storyblok.&lt;/li&gt;
+&lt;li&gt;Help guide our roadmap of documentation, tutorials, and onboarding experience&lt;/li&gt;
+&lt;li&gt;Passionate and highly knowledgeable about advanced topics and latest trends around web development.&lt;/li&gt;
+&lt;li&gt;Demonstrates AI literacy, with the ability to leverage AI tools to enhance productivity, decision-making, and quality of work while applying sound judgment and critical thinking.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;&lt;strong&gt;EDUCATION AND EXPERIENCE&lt;/strong&gt;&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;5+ years of experience in web development.&lt;/li&gt;
+&lt;li&gt;Experience with CMS in general; experience with Headless CMS is a plus.&lt;/li&gt;
+&lt;li&gt;Thorough knowledge of consuming RESTful APIs. GraphQL APIs is a plus.&lt;/li&gt;
+&lt;li&gt;Thorough knowledge of at least one of the modern JavaScript frameworks (e.g., Vue, React, Next, Nuxt, Astro, or Svelte) along with its fundamental principles.&lt;/li&gt;
+&lt;li&gt;Experience with public speaking.&lt;/li&gt;
+&lt;li&gt;Experience with organizing meetups or other events.&lt;/li&gt;
+&lt;li&gt;Good problem-solving and critical-thinking abilities.&amp;nbsp;&lt;/li&gt;
+&lt;li&gt;Strong command of the English language.&lt;/li&gt;
+&lt;li&gt;Good communication skills that facilitate interaction with multiple stakeholders and across departments.&lt;/li&gt;
+&lt;li&gt;You are confident, detail-oriented, and highly motivated to contribute to the organization's growth as part of a high-performing team.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;strong&gt;DESIRABLE EXPERIENCE&lt;/strong&gt;&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Experience with customer calls, developer support, or other developer relations activities.&lt;/li&gt;
+&lt;li&gt;Experience with technical writing.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&amp;nbsp;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;&lt;em&gt;U.S. Base Salary Range: $102,900 - $140,000&lt;/em&gt;&lt;/strong&gt;&lt;br&gt;&lt;br&gt;&lt;em&gt;At Storyblok, we are committed to equitable compensation and pay transparency. We consider many factors when it comes to compensation, such as the scope of the role, job-related skills, experience, and relevant education or training. Our base salary ranges are determined by job and job level and are benchmarked to relevant location and industry data. The range displayed represents the target US base compensation range within which we are hiring for this role. For some roles Storyblok also offers a competitive commission structure.&lt;/em&gt;&lt;/p&gt;&lt;div class="content-conclusion"&gt;&lt;p&gt;&lt;strong&gt;MENTAL, PHYSICAL AND ENVIRONMENTAL REQUIREMENTS&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;span&gt;Remote (home) work opportunity or funded by Storyblok co-working space&lt;/span&gt;&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;GENERAL TERMS&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;Storyblok has a commitment to diversity and inclusion. We strive to create a hiring environment in which all people feel they are equally respected and valued, irrespective of gender identity or expression, sexual orientation, ethnicity, age, religion, citizenship or any other characteristic. &lt;em&gt;You can find more information about our privacy policy&lt;/em&gt;&lt;strong&gt;&lt;em&gt;&amp;nbsp;&lt;/em&gt;&lt;/strong&gt;&lt;em&gt;&lt;a class="c-link" href="https://www.storyblok.com/legal/applicants-privacy-policy"&gt;here&lt;/a&gt;&lt;/em&gt;&lt;em&gt;.&lt;/em&gt;&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;All communications regarding job opportunities at Storyblok will come from an official Storyblok employee with an email address ending in @storyblok.com. We will never redirect you to another portal or another site that is unrelated to our domain (&lt;a class="c-link" href="http://storyblok.com/"&gt;storyblok.com&lt;/a&gt;).&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;Here is a sneak peek of&amp;nbsp;&lt;/em&gt;&lt;em&gt;&lt;a href="https://www.youtube.com/watch?v=yxinDgI-WVU"&gt;Storyblok’s Visual Editor&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;If you need an accommodation for any part of the application process, please email &lt;a class="c-link" href="mailto:talent.acquisition@storyblok.com"&gt;talent.acquisition@storyblok.com&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;strong&gt;To apply:&lt;/strong&gt; &lt;a href="https://weworkremotely.com/remote-jobs/storyblok-developer-relations-engineer-usa"&gt;https://weworkremotely.com/remote-jobs/storyblok-developer-relations-engineer-usa&lt;/a&gt;&lt;/p&gt;
+</description>
+      <pubDate>Fri, 09 Oct 2026 07:31:02 +0000</pubDate>
+      <expires_at>Sun, 08 Nov 2026 07:31:02 +0000</expires_at>
+      <guid>https://weworkremotely.com/remote-jobs/storyblok-developer-relations-engineer-usa</guid>
+      <link>https://weworkremotely.com/remote-jobs/storyblok-developer-relations-engineer-usa</link>
+    </item>
+</channel>
+</rss>
