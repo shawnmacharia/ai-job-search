@@ -150,9 +150,10 @@ def _flag_job(
         flags.append(f"deadline {job['deadline']}")
     if job.get("posted_date") is None and job.get("posted_raw"):
         flags.append(f"posted date unparsed ({job['posted_raw']})")
-    conflict = geography_conflict(job, candidate_country=candidate_country)
-    if conflict:
-        flags.append(conflict)
+    flags.extend(verdict.flags)
+    for note in verdict.notes:
+        if note.startswith("geography conflict"):
+            flags.append(note)
     return flags
 
 
@@ -168,45 +169,6 @@ _COUNTRY_NAMES = {"ke": "Kenya"}
 
 def _display_country(code: str) -> str:
     return _COUNTRY_NAMES.get(code.casefold(), code)
-
-
-def geography_conflict(
-    job: Mapping[str, Any], *, candidate_country: str = "KE"
-) -> str:
-    """Flag a posting whose own fields disagree about the candidate's country.
-
-    Some sources publish a global label ("Anywhere in the World") *and* an
-    explicit enumeration of the countries they will actually hire in. When the
-    label says worldwide and that enumeration omits the candidate's country,
-    the posting contradicts itself.
-
-    This is reported rather than resolved. The eligibility policy is the
-    authority on verdicts and is deliberately not overridden here; instead the
-    disagreement is surfaced so a reviewer can weigh an "eligible" verdict that
-    rests on a contested reading.
-
-    The country list is compared against the full country name, since that is
-    the form sources publish it in; an ISO code would never match.
-    """
-    region = str(job.get("region") or "")
-    countries = str(job.get("country") or "")
-    if not countries:
-        return ""
-    claims_global = any(claim in region.casefold() for claim in _GLOBAL_CLAIMS)
-    if not claims_global:
-        return ""
-    enumerated = {
-        part.strip().casefold()
-        for part in countries.split(",")
-        if part.strip()
-    }
-    name = _display_country(candidate_country)
-    if candidate_country.casefold() in enumerated or name.casefold() in enumerated:
-        return ""
-    return (
-        f"source states worldwide, but its country list omits "
-        f"{name} - verdict rests on a contested reading"
-    )
 
 
 def _as_job(payload: Mapping[str, Any]) -> Job:
@@ -233,6 +195,28 @@ def _as_job(payload: Mapping[str, Any]) -> Job:
             # leave it as unknown rather than rejecting the whole job.
             fields["remote_status"] = RemoteStatus.UNKNOWN
     return Job(**fields)
+
+
+def geography_conflict(
+    job: Mapping[str, Any], *, candidate_country: str = "KE"
+) -> str:
+    """Describe a country list that omits the candidate despite a global claim.
+
+    A thin reporting helper only. The *decision* belongs to
+    :mod:`app.jobs.eligibility`, where an explicit country list is
+    authoritative, so this never changes a verdict. It exists so a reader can
+    see at a glance that a posting's label and its own enumeration disagree.
+    """
+    from app.jobs.eligibility import _enumerated_countries, _listed_in
+
+    region = str(job.get("region") or "")
+    if not _enumerated_countries(job):
+        return ""
+    if not any(claim in region.casefold() for claim in _GLOBAL_CLAIMS):
+        return ""
+    if _listed_in(job, candidate_country):
+        return ""
+    return f"source states worldwide, but its country list omits {_display_country(candidate_country)}"
 
 
 def build_view(
@@ -347,7 +331,7 @@ def coverage_of(
         "fetched": 0, "stored": 0, "rejected": 0,
         "duplicates": 0, "quarantined": 0,
         "eligible": 0, "not_eligible": 0, "unknown": 0,
-        "country_named": 0, "conflicts": 0,
+        "country_named": 0, "country_lists": 0, "conflicts": 0,
         "no_active_sources": 0, "runs": len(runs),
     }
     for run in runs:
@@ -362,10 +346,13 @@ def coverage_of(
     for view in views:
         if view.verdict in ("eligible", "not_eligible", "unknown"):
             totals[view.verdict] += 1
-        if any("contested reading" in flag for flag in view.flags):
+        if any("contested reading" in flag or "geography conflict" in flag
+               for flag in view.flags):
             totals["conflicts"] += 1
-        if _country_list_names(view, name):
-            totals["country_named"] += 1
+        if view.country:
+            totals["country_lists"] += 1
+            if _country_list_names(view, name):
+                totals["country_named"] += 1
     return totals
 
 
@@ -385,7 +372,8 @@ def _coverage_panel(totals: Mapping[str, int], views: Sequence[JobView]) -> str:
         ("unknown", totals["unknown"]),
         ("duplicates", totals["duplicates"]),
         ("quarantined", totals["quarantined"]),
-        ("country lists naming Kenya", totals["country_named"]),
+        ("country lists published", totals["country_lists"]),
+        ("naming Kenya", totals["country_named"]),
         ("geography conflicts", totals["conflicts"]),
     )
     parts = "".join(
@@ -395,36 +383,47 @@ def _coverage_panel(totals: Mapping[str, int], views: Sequence[JobView]) -> str:
 
     notes: List[str] = []
     if totals["no_active_sources"]:
-        # Checked first: "nothing was collected" is the more useful message
-        # when it is true, and it would otherwise be masked below.
+        # Checked first and exclusive: "nothing was consulted" makes every
+        # other observation vacuous, and stacking them reads as noise.
         notes.append(
             "No source was consulted in the most recent run. Nothing was "
             "collected; this is not an empty result."
         )
-    elif views and totals["eligible"] == 0:
+    elif not views:
+        # Distinct from "jobs arrived but none are eligible": here the source
+        # returned nothing at all, which is a collection fact, not a coverage
+        # limit.
         notes.append(
-            "0 Kenya-eligible jobs in this feed; the feed currently excludes "
-            f"Kenya. {len(views)} job(s) were collected and judged "
-            f"{totals['not_eligible']} not eligible / {totals['unknown']} "
-            "unknown. This is a coverage limit, not a collection failure."
+            "The source returned no jobs in this run. Nothing was collected, "
+            "so no eligibility could be assessed."
         )
-    if views and totals["country_named"] == 0:
-        # The country list is the source's own enumeration of where it will
-        # hire. When it never names the candidate's country, that is the fact
-        # worth stating plainly - independently of what the verdict says.
-        # Deliberately does NOT claim "0 Kenya-eligible": the eligibility
-        # policy may disagree, and overstating the verdict in the other
-        # direction would be its own fabrication.
-        contested = (
-            f" {totals['eligible']} were nonetheless judged eligible on "
-            "worldwide wording or body text; treat those verdicts as contested."
-            if totals["eligible"] else ""
-        )
-        notes.append(
-            f"No collected listing names Kenya in its published country list "
-            f"({len(views)} listings checked). The feed currently excludes "
-            f"Kenya.{contested}"
-        )
+    else:
+        if totals["eligible"] == 0:
+            notes.append(
+                "0 Kenya-eligible jobs in this feed; the feed currently "
+                f"excludes Kenya. {len(views)} job(s) were collected and judged "
+                f"{totals['not_eligible']} not eligible / {totals['unknown']} "
+                "unknown. This is a coverage limit, not a collection failure."
+            )
+        if totals["unknown"] and not totals["eligible"] and not totals["not_eligible"]:
+            notes.append(
+                "Eligibility could not be determined for any listing: the "
+                "postings state no usable location information."
+            )
+        if totals["country_lists"] and totals["country_named"] == 0:
+            # Only asserted when listings actually publish an enumeration.
+            # Saying "no listing names Kenya" when none publishes a country
+            # list at all would be true of a field that was never filled in.
+            contested = (
+                f" {totals['eligible']} were nonetheless judged eligible; "
+                "treat those verdicts as contested."
+                if totals["eligible"] else ""
+            )
+            notes.append(
+                f"No published country list names Kenya "
+                f"({totals['country_lists']} listing(s) publish a list). "
+                f"The feed currently excludes Kenya.{contested}"
+            )
 
     rendered = "".join(f'<p class="notice">{html.escape(n)}</p>' for n in notes)
     return f"<div class='coverage'>{parts}</div>{rendered}"
