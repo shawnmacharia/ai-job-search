@@ -369,17 +369,33 @@ class JobStore:
     # reading
     # ------------------------------------------------------------------
 
-    def load_jobs(self) -> List[Dict[str, Any]]:
+    def load_jobs(self, *, strict: bool = False) -> List[Dict[str, Any]]:
         """Fold the append-only log into one canonical record per job.
 
         The last line for a given ``job_id`` wins, because a re-sighting of the
         same URL appends an updated record rather than editing the original.
+
+        A record with no usable ``job_id`` cannot be folded, because there is
+        nothing to key it on. Historically such records were dropped without
+        comment, which made a corrupt line indistinguishable from a record that
+        was never written. ``strict=True`` raises :class:`ValueError` naming
+        every offender instead, for callers that need to know a record went
+        missing rather than quietly lose it.
         """
         canonical: Dict[str, Dict[str, Any]] = {}
-        for record in self._read_jsonl(self.jobs_path):
+        unusable: List[int] = []
+        for index, record in enumerate(self._read_jsonl(self.jobs_path)):
             job_id = record.get("job_id")
             if job_id:
                 canonical[job_id] = record
+            else:
+                unusable.append(index)
+        if strict and unusable:
+            raise ValueError(
+                f"{len(unusable)} record(s) in {self.jobs_path.name} have no usable "
+                f"job_id and cannot be folded: line(s) "
+                f"{', '.join(str(i + 1) for i in unusable)}"
+            )
         return list(canonical.values())
 
     def load_rejected(self) -> List[Dict[str, Any]]:
