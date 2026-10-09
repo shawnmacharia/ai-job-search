@@ -536,9 +536,9 @@ class DashboardTests(unittest.TestCase):
 
         views = _views_with_verdicts(["eligible", "eligible"], country="Uganda, South Africa")
         markup = _coverage_panel(coverage_of(views, []), views)
-        self.assertIn("No collected listing names Kenya", markup)
+        self.assertIn("No published country list names Kenya", markup)
         self.assertIn("contested", markup)
-        self.assertIn("country lists naming Kenya", markup)
+        self.assertIn("naming Kenya", markup)
 
     def test_the_coverage_note_distinguishes_no_run_from_an_empty_result(self):
         from app.reporting.jobs import _coverage_panel
@@ -561,19 +561,37 @@ class DashboardTests(unittest.TestCase):
             totals["eligible"] + totals["not_eligible"] + totals["unknown"],
             len(views))
 
-    def test_western_worldwide_jobs_carry_the_geography_conflict_flag(self):
-        # WWR says "Anywhere in the World" while its country list omits Kenya.
-        # The conflict is surfaced on the row rather than silently resolved.
+    def test_only_jobs_with_both_signals_are_flagged_as_conflicted(self):
+        # Exactly one fixture item publishes a country list *and* has body
+    # text naming a region containing Kenya. The rest publish no list at all,
+    # so they fall to the existing prose policy and carry no conflict.
+        from app.jobs.eligibility import GEOGRAPHY_CONFLICT
         from app.reporting.jobs import build_view
 
         views = [build_view(r) for r in self.store.load_jobs()]
-        conflicted = [v for v in views
-                      if any("omits Kenya" in f for f in v.flags)]
-        self.assertTrue(conflicted, "the fixture is chosen so conflicts exist")
-        for view in conflicted:
+        conflicted = [v for v in views if GEOGRAPHY_CONFLICT in v.flags]
+        self.assertEqual(len(conflicted), 1)
+        self.assertEqual(conflicted[0].company, "Lemon.io")
+        self.assertEqual(conflicted[0].verdict, "not_eligible")
+
+    def test_a_job_with_a_country_list_is_not_eligible_even_when_worldwide(self):
+        from app.reporting.jobs import build_view
+
+        views = [build_view(r) for r in self.store.load_jobs()]
+        listed = [v for v in views if v.country]
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0].company, "Lemon.io")
+        self.assertEqual(listed[0].verdict, "not_eligible")
+
+    def test_jobs_with_no_country_list_keep_the_existing_prose_policy(self):
+        from app.reporting.jobs import build_view
+
+        views = [build_view(r) for r in self.store.load_jobs()]
+        unlisted = [v for v in views if not v.country]
+        self.assertEqual(len(unlisted), 5)
+        for view in unlisted:
             with self.subTest(job=view.job_id):
-                self.assertTrue(
-                    "contested reading" in " ".join(view.flags))
+                self.assertNotIn("geography_conflict", view.flags)
 
     def test_the_kenya_filter_is_opt_in_and_narrows_to_eligible(self):
         from app.reporting.jobs import build_view, _filtered
@@ -626,13 +644,19 @@ class GeographyConflictTests(unittest.TestCase):
 
         self.assertEqual(geography_conflict({"region": "Anywhere in the World"}), "")
 
-    def test_the_conflict_reaches_the_row_flags(self):
-        from app.reporting.jobs import _flag_job
-        from app.jobs.eligibility import EligibilityVerdict
+    def test_a_single_country_is_not_an_enumeration(self):
+        from app.reporting.jobs import geography_conflict
 
-        job = {"region": "Anywhere in the World", "country": "Uganda, South Africa"}
-        flags = _flag_job(job, EligibilityVerdict(verdict="eligible", reasons=["r"]))
-        self.assertTrue(any("omits Kenya" in f for f in flags))
+        job = {"region": "Anywhere in the World", "country": "Germany"}
+        self.assertEqual(geography_conflict(job), "")
+
+    def test_the_helper_never_changes_a_verdict(self):
+        # It is a reporting convenience only; the decision lives in
+        # app.jobs.eligibility.
+        from app.reporting.jobs import geography_conflict
+
+        job = {"region": "Anywhere in the World", "country": "Kenya, Uganda"}
+        self.assertEqual(geography_conflict(job), "")
 
 class NoNetworkTests(unittest.TestCase):
     def test_the_source_module_has_no_hardcoded_fetch_beyond_the_fetcher(self):

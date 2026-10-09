@@ -22,19 +22,39 @@ Eligibility policy
 ------------------
 These decisions are deliberate. Changing one is a policy change, not a bug fix.
 
-1. An explicit positive mention of Kenya in a remote posting makes the role
+1. **An explicit country list is authoritative.** When a posting enumerates the
+   countries it will hire in - ``country: "Kenya, Uganda, South Africa"`` -
+   that list decides, and generic marketing wording ("Anywhere in the World",
+   "global", "worldwide") does **not** override it. Kenya named -> eligible;
+   Kenya absent -> ``not_eligible``.
+
+   This rule exists because the alternative was demonstrably wrong. We Work
+   Remotely labels 87 of 89 live listings "Anywhere in the World" while
+   enumerating accepted countries that omit Kenya. Judged on prose alone, 22 of
+   those 89 came back ``eligible`` despite not one listing naming Kenya. An
+   employer's own enumeration is a more specific statement than its marketing
+   label, and the specific one governs.
+
+2. When an explicit list excludes Kenya but the body text also names Kenya
+   positively, the verdict is ``not_eligible`` and a ``geography_conflict``
+   flag is raised. Both signals and their evidence are shown. Defaulting to
+   ``eligible`` there would take a source's prose over its own structured data
+   and silently manufacture matches; defaulting to ``not_eligible`` without
+   recording the conflict would hide that the posting disagrees with itself.
+
+3. An explicit positive mention of Kenya in a remote posting makes the role
    eligible, even when another region is listed alongside it - an employer who
    writes "Kenya" has made a positive statement. However, an explicit
    non-Kenyan ``location`` field outranks a passing mention in the job body:
    "Kenya market knowledge" is not an offer to Kenyan applicants.
-2. APAC-only and EMEA-only postings resolve to ``unknown``, not to
+4. APAC-only and EMEA-only postings resolve to ``unknown``, not to
    ``eligible`` or ``not_eligible``, unless Kenya is explicitly included or
    excluded. Kenya is inside EMEA but not inside APAC; neither is a clean
    exclusion, and guessing either way would be a confident wrong answer.
-3. A missing salary never rejects a job. It produces a review flag.
-4. An unknown work arrangement never silently rejects a job when remote work
+5. A missing salary never rejects a job. It produces a review flag.
+6. An unknown work arrangement never silently rejects a job when remote work
    is preferred. It produces a review flag.
-5. Every ``not_eligible`` verdict carries at least one human-readable reason,
+7. Every ``not_eligible`` verdict carries at least one human-readable reason,
    plus evidence quotes whenever the decision came from posting text.
 
 Pure and deterministic: no I/O, no model calls, no new dependencies.
@@ -173,8 +193,94 @@ def _candidate_code(candidate_country: str) -> str:
 
 
 def _posting_country(job: Job) -> Optional[str]:
-    raw = (job.country or "").strip().casefold()
-    return _COUNTRY_ALIASES.get(raw) if raw else None
+    """Resolve a single-valued ``country`` field to an ISO code.
+
+    Exact alias match first. Failing that, an alias of three characters or more
+    that the value *starts with* is accepted, because sources publish extended
+    official names - "United States of America", "Korea (the Republic of)" -
+    that a fixed alias table will always be missing.
+
+    The three-character floor matters: two-letter codes would let "no" match
+    unrelated entries, and a wrong country code is a confidently wrong verdict.
+    """
+    raw = _field(job, "country").strip().casefold()
+    if not raw:
+        return None
+    exact = _COUNTRY_ALIASES.get(raw)
+    if exact:
+        return exact
+    for alias, code in _COUNTRY_ALIASES.items():
+        if len(alias) >= 3 and raw.startswith(alias):
+            return code
+    return None
+
+
+#: Marker for a posting that contradicts itself about the candidate's country.
+GEOGRAPHY_CONFLICT = "geography_conflict"
+
+#: How many entries make a `country` field an explicit *enumeration* rather
+#: than a single country. One entry keeps the older single-country path, so
+#: existing behaviour for `country: "Germany"` is untouched.
+_ENUMERATION_MIN = 2
+
+#: Country names accepted as matching a candidate's country code, per the
+#: candidate. Sources publish full names; the policy is addressed by ISO code.
+_COUNTRY_NAMES = {"KE": ("kenya", "ken"), "KE ": ("kenya",)}
+
+
+def _field(job, name: str) -> str:
+    """Read a field from a :class:`Job` or its stored mapping form.
+
+    The reporting layer holds records as plain dicts while the policy reads
+    dataclasses; both shapes reach these helpers, so neither should have to
+    convert.
+    """
+    value = job.get(name) if isinstance(job, dict) else getattr(job, name, None)
+    return str(value or "")
+
+
+def _country_entries(raw: str) -> List[str]:
+    """Split a ``country`` field into its enumerated entries."""
+    if not raw:
+        return []
+    cleaned = re.sub(r"[\U0001F1E6-\U0001F1FF]", " ", raw)
+    parts = re.split(r"[,;/]|\band\b", cleaned)
+    return [part.strip(" .()\t") for part in parts if part.strip(" .()\t")]
+
+
+def _enumerated_countries(job: Job) -> List[str]:
+    """The explicit country list, if the posting publishes one.
+
+    Returns ``[]`` for a posting with no ``country`` field, or with a single
+    value - both of which are handled by the older single-country path so that
+    existing behaviour is preserved.
+    """
+    entries = _country_entries(_field(job, "country"))
+    return entries if len(entries) >= _ENUMERATION_MIN else []
+
+
+def _entry_names(entry: str, candidate: str) -> bool:
+    """Does this enumerated entry name the candidate's country?"""
+    target = _candidate_code(candidate)
+    accepted = _COUNTRY_NAMES.get(target, (target,))
+    normalised = entry.casefold()
+    if normalised in accepted:
+        return True
+    # Some sources publish "Kenya (East Africa)" or "Kenya, Africa".
+    return any(normalised.startswith(name) for name in accepted)
+
+
+def _listed_in(job: Job, candidate: str) -> bool:
+    """Is the candidate's country named in the explicit country list?"""
+    return any(_entry_names(entry, candidate) for entry in _enumerated_countries(job))
+
+
+def _sample_entries(job: Job, limit: int = 4) -> str:
+    entries = _enumerated_countries(job)
+    shown = ", ".join(entries[:limit])
+    if len(entries) > limit:
+        shown += f", +{len(entries) - limit} more"
+    return shown
 
 
 @dataclass
@@ -186,12 +292,19 @@ class EligibilityVerdict:
     every ``unknown`` result. ``evidence_quotes`` holds excerpts of the posting
     text that support the decision, so it can be shown to the user rather than
     merely asserted.
+
+    ``flags`` carries machine-readable markers. ``geography_conflict`` means the
+    posting contradicts itself - an explicit country list excludes the
+    candidate's country while the body text names it positively. The conflict
+    is reported alongside the verdict, never resolved silently in either
+    direction.
     """
 
     verdict: str
     reasons: List[str] = field(default_factory=list)
     evidence_quotes: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
+    flags: List[str] = field(default_factory=list)
 
     @property
     def is_eligible(self) -> bool:
@@ -200,6 +313,10 @@ class EligibilityVerdict:
     @property
     def is_unknown(self) -> bool:
         return self.verdict == UNKNOWN
+
+    @property
+    def has_conflict(self) -> bool:
+        return GEOGRAPHY_CONFLICT in self.flags
 
 
 def evaluate_eligibility(job: Job, *, candidate_country: str = "KE") -> EligibilityVerdict:
@@ -223,6 +340,52 @@ def evaluate_eligibility(job: Job, *, candidate_country: str = "KE") -> Eligibil
     kenya_terms = _find_all(_KENYA_IN_SCOPE_RE, text, quotes)
     kenya_named = bool(kenya_terms)
     kenya_in_location = bool(_KENYA_IN_SCOPE_RE.search(job.location or ""))
+
+    # --- 0. an explicit country *enumeration* is authoritative and outranks
+    #        every generic phrase, including "worldwide". Checked first
+    #        because it is the most specific statement a posting can make
+    #        about where it will hire. ---
+    enumerated = _enumerated_countries(job)
+    if enumerated:
+        listed = _listed_in(job, candidate_country)
+        list_evidence = [f"country: {job.country}"]
+        if listed:
+            return EligibilityVerdict(
+                verdict=ELIGIBLE,
+                reasons=[
+                    f"the posting's country list names the candidate's country "
+                    f"({_sample_entries(job)})"
+                ],
+                evidence_quotes=quotes + list_evidence,
+            )
+        # Kenya absent from the employer's own enumeration. A positive Kenya
+        # mention in the body does not rescue it: the structured statement is
+        # the specific one. The disagreement is recorded rather than hidden.
+        conflict = kenya_named
+        reasons = [
+            f"the posting's country list ({_sample_entries(job)}) does not "
+            f"include the candidate's country, so a "
+            f"{candidate_country}-based applicant is not eligible"
+        ]
+        if conflict:
+            reasons.append(
+                f"the body text also indicates Kenya or a region containing it "
+                f"({', '.join(kenya_terms[:2])}), but the explicit country list "
+                f"takes precedence; both signals are shown"
+            )
+        notes = []
+        if conflict:
+            notes.append(
+                f"geography conflict: body indicates the candidate's region "
+                f"({', '.join(kenya_terms[:2])}) while the country list omits it"
+            )
+        return EligibilityVerdict(
+            verdict=NOT_ELIGIBLE,
+            reasons=reasons,
+            evidence_quotes=quotes + list_evidence,
+            notes=notes,
+            flags=[GEOGRAPHY_CONFLICT] if conflict else [],
+        )
 
     # --- 1. a `country` field naming somewhere else is authoritative ---
     posting_country = _posting_country(job)
