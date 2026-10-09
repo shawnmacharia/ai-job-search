@@ -1,0 +1,15 @@
+{
+  "_note": "Malformed card: no description. Must raise AdaptError, never produce an empty Job.",
+  "title": "Data Engineer",
+  "company": "Broken Corp",
+  "company_blurb": null,
+  "location": "Remote",
+  "salary": null,
+  "work_mode": "Remote",
+  "employment_type": null,
+  "posted": "3d ago",
+  "description_snippet": "",
+  "url": "https://hiring.cafe/job/missing-desc-008",
+  "matched_query": "Data Engineer",
+  "skill_match_count": 0
+}

@@ -1,0 +1,15 @@
+{
+  "_note": "USD range per year with a bare $ - currency must stay None because $ is ambiguous.",
+  "title": "Senior Analytics Engineer",
+  "company": "Northwind Insurance",
+  "company_blurb": "Series C insurtech building the claims data platform.",
+  "location": "Remote",
+  "salary": "$80k-$120k/yr",
+  "work_mode": "Remote",
+  "employment_type": "Full-time",
+  "posted": "5h ago",
+  "description_snippet": "Own the medallion warehouse: bronze, silver and gold layers modelled with dbt and BigQuery.",
+  "url": "https://hiring.cafe/job/salary-year-002",
+  "matched_query": "Analytics Engineer",
+  "skill_match_count": 7
+}

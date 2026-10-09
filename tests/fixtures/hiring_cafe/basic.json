@@ -1,0 +1,15 @@
+{
+  "_note": "Simplest card: no salary, no blurb. Baseline shape.",
+  "title": "Data Engineer",
+  "company": "Acme Analytics",
+  "company_blurb": null,
+  "location": "Remote",
+  "salary": null,
+  "work_mode": "Remote",
+  "employment_type": "Full-time",
+  "posted": "2d ago",
+  "description_snippet": "Build and maintain ELT pipelines with Python, SQL and dbt on a modern data platform.",
+  "url": "https://hiring.cafe/job/basic-001",
+  "matched_query": "Data Engineer",
+  "skill_match_count": 4
+}

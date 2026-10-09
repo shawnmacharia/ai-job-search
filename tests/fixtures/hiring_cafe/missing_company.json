@@ -1,0 +1,15 @@
+{
+  "_note": "Malformed card: no company. Must raise AdaptError.",
+  "title": "Data Engineer",
+  "company": null,
+  "company_blurb": null,
+  "location": "Remote",
+  "salary": null,
+  "work_mode": "Remote",
+  "employment_type": null,
+  "posted": "1d ago",
+  "description_snippet": "Something about pipelines.",
+  "url": "https://hiring.cafe/job/missing-company-009",
+  "matched_query": "Data Engineer",
+  "skill_match_count": 1
+}

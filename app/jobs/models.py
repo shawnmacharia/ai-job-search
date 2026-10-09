@@ -1,7 +1,7 @@
 """Provider-independent job records."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.state.models import RemoteStatus
 
@@ -25,6 +25,24 @@ class Job:
     posted_date: Optional[str] = None
     deadline: Optional[str] = None
     skills: List[str] = field(default_factory=list)
+
+    # --- provenance and completeness, added for source adapters ---
+    # All three default to a safe, honest value, so every existing positional
+    # and keyword construction of Job keeps working unchanged.
+
+    #: Source fields this record could not map to a canonical field, kept
+    #: verbatim. Present so that adapting a source never *silently* discards
+    #: data: anything not mapped lands here instead of vanishing.
+    raw_excerpt: Dict[str, Any] = field(default_factory=dict)
+
+    #: The source's own date string, kept when parsing it to an absolute date
+    #: was lossy or failed outright (e.g. "2d ago" -> "2026-10-07").
+    posted_raw: Optional[str] = None
+
+    #: Whether ``description`` is the complete posting. Defaults to False
+    #: because most sources publish only a card snippet, and downstream
+    #: matching must be able to tell "short" from "whole".
+    description_complete: bool = False
 
 
 def job_key(company: str, title: str) -> str:
