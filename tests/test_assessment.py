@@ -32,14 +32,22 @@ from app.jobs.assessment import (
     STATUS_ERROR,
     STATUS_INSUFFICIENT,
     STATUS_REFUSED,
+    CALL_FIRST,
+    CALL_REPAIR,
+    UNKNOWN_MODEL,
     AssessmentRecord,
     AssessmentStore,
     AssessmentUnavailable,
     CandidateProfile,
+    ProviderIdentity,
+    _CountingProvider,
+    _model_name,
     assess_batch,
     assess_one,
     build_assessment,
+    build_local_trial,
     describe_data_boundary,
+    identity_of,
     is_local_endpoint,
     is_local_model,
     plan_only,
@@ -47,6 +55,7 @@ from app.jobs.assessment import (
     registered_providers,
     register_provider,
     resolve_provider,
+    run_local_trial,
     to_match_dict,
 )
 from app.jobs.assessment import (
@@ -135,6 +144,19 @@ class FakeProvider:
     def list_models(self):
         return [self.model]
 
+    def describe(self):
+        """Declares identity, as a working provider must.
+
+        Providers that omit this are covered separately by ``SilentProvider``;
+        this double is meant to stand in for a functioning one.
+        """
+        return {
+            "model": self.model,
+            "endpoint": "http://localhost:11434",
+            "local_only": True,
+            "timeout_seconds": 600.0,
+        }
+
 
 class ExplodingProvider(FakeProvider):
     def generate(self, request):
@@ -166,6 +188,53 @@ class LocalEndpointProvider(FakeProvider):
         super().__init__(["{}"], **kwargs)
         self.base_url = "http://localhost:11434"
         self.default_model = "llama3.2:latest"
+
+
+class OllamaLikeProvider(FakeProvider):
+    """A provider that satisfies the metadata contract."""
+
+    def __init__(self, responses=None, **kwargs):
+        super().__init__(responses or [json.dumps(_good_payload())], **kwargs)
+        self.base_url = "http://localhost:11434"
+        self.default_model = "llama3.2:latest"
+
+    def describe(self):
+        return {
+            "model": self.default_model,
+            "endpoint": self.base_url,
+            "local_only": True,
+            "timeout_seconds": 600.0,
+        }
+
+
+class SilentProvider(FakeProvider):
+    """A provider that declares nothing. Must be recorded as ``unknown``."""
+
+    # Explicitly removes the inherited contract: a subclass that inherited
+    # ``describe`` would test nothing.
+    describe = None
+
+    def __init__(self, **kwargs):
+        super().__init__(["{}"], **kwargs)
+        self.base_url = "http://localhost:11434"
+        self.default_model = "llama3.2:latest"
+
+
+class TimingOutProvider(FakeProvider):
+    def __init__(self, **kwargs):
+        super().__init__(["{}"], **kwargs)
+        self.base_url = "http://localhost:11434"
+        self.default_model = "llama3.2:latest"
+
+    def describe(self):
+        return {"model": "llama3.2:latest", "endpoint": self.base_url,
+                "local_only": True, "timeout_seconds": 600.0}
+
+    def generate(self, request):
+        self.calls += 1
+        from app.llm.exceptions import ProviderTimeoutError
+
+        raise ProviderTimeoutError("Ollama request timed out: timed out")
 
 
 class AssessmentTestCase(unittest.TestCase):
@@ -1133,6 +1202,254 @@ class LocalOllamaRegistrationTests(AssessmentTestCase):
                         "boundary must be printed before registration")
         self.assertIn("job fields NOT sent", output)
         self.assertIn("credentials sent", output)
+
+
+class ProviderMetadataContractTests(AssessmentTestCase):
+    """Identity comes from an explicit contract, not from guessing.
+
+    The three real trial records carried ``model: None`` because a counting
+    wrapper exposed none of the attributes the old code reached for. These
+    tests pin the fix: a wrapper that does not declare itself is recorded as
+    ``unknown``, never as a null.
+    """
+
+    def _assess_with(self, provider):
+        return assess_one(_job(), profile=self.profile, provider_name="fake",
+                          provider=provider, store=self.assessments), provider
+
+    def test_the_real_ollama_provider_declares_itself(self):
+        from app.llm.ollama import OllamaProvider
+
+        described = OllamaProvider(
+            base_url="http://localhost:11434", model="llama3.2:latest",
+            timeout_seconds=600.0).describe()
+        self.assertEqual(described["model"], "llama3.2:latest")
+        self.assertEqual(described["endpoint"], "http://localhost:11434")
+        self.assertIs(described["local_only"], True)
+        self.assertEqual(described["timeout_seconds"], 600.0)
+
+    def test_identity_is_read_from_a_wrapping_provider(self):
+        """The exact case that produced model=None."""
+        from app.jobs.assessment import _CountingProvider
+
+        class Real(OllamaLikeProvider):
+            def describe(self):
+                return {"model": "llama3.2:latest", "endpoint": "http://localhost:11434",
+                        "local_only": True, "timeout_seconds": 600.0}
+
+        identity = identity_of(_CountingProvider(Real()), "local-ollama")
+        self.assertEqual(identity.model, "llama3.2:latest")
+        self.assertEqual(identity.timeout_seconds, 600.0)
+
+    def test_a_provider_without_metadata_records_unknown_not_none(self):
+        identity = identity_of(SilentProvider(), "wrapped")
+        self.assertEqual(identity.model, UNKNOWN_MODEL)
+        self.assertNotEqual(identity.model, None)
+        self.assertFalse(identity.audit_safe)
+
+    def test_a_provider_that_raises_on_describe_records_unknown(self):
+        class Hostile(SilentProvider):
+            def describe(self):
+                raise RuntimeError("no")
+
+        self.assertEqual(identity_of(Hostile(), "h").model, UNKNOWN_MODEL)
+
+    def test_a_provider_returning_junk_records_unknown(self):
+        class Junk(SilentProvider):
+            def describe(self):
+                return "not a mapping"
+
+        self.assertEqual(identity_of(Junk(), "j").model, UNKNOWN_MODEL)
+
+    def test_an_empty_model_string_is_refused_at_construction(self):
+        with self.assertRaises(ValueError):
+            ProviderIdentity(provider="x", model="")
+
+    def test_a_record_never_stores_none_as_the_model(self):
+        provider = SilentProvider()
+        record = assess_one(_job(), profile=self.profile,
+                            provider_name="wrapped", provider=provider,
+                            store=self.assessments)
+        self.assertNotEqual(record.model, None)
+        self.assertEqual(record.model, UNKNOWN_MODEL)
+
+    def test_an_assessment_records_the_full_identity(self):
+        record, _ = self._assess_with(OllamaLikeProvider())
+        self.assertEqual(record.provider, "fake")
+        self.assertEqual(record.model, "llama3.2:latest")
+        self.assertEqual(record.endpoint, "http://localhost:11434")
+        self.assertIs(record.local_only, True)
+        self.assertEqual(record.timeout_seconds, 600.0)
+
+    def test_an_error_record_carries_identity_and_error_type(self):
+        record = assess_one(_job(), profile=self.profile,
+                            provider_name="fake",
+                            provider=ExplodingProvider(["{}"]),
+                            store=self.assessments)
+        self.assertEqual(record.status, STATUS_ERROR)
+        self.assertEqual(record.error_type, "ProviderConnectionError")
+        self.assertEqual(record.model, "fake-model-v1")
+
+    def test_a_timeout_record_carries_the_configured_limit(self):
+        """A timeout must be readable against the limit that was in force."""
+        record = assess_one(_job(), profile=self.profile,
+                            provider_name="fake",
+                            provider=TimingOutProvider(),
+                            store=self.assessments)
+        self.assertEqual(record.status, STATUS_ERROR)
+        self.assertEqual(record.error_type, "ProviderTimeoutError")
+        self.assertEqual(record.timeout_seconds, 600.0)
+        self.assertIn("timed out", record.error)
+
+    def test_the_first_call_is_labelled_distinctly_from_a_repair(self):
+        record, provider = self._assess_with(OllamaLikeProvider())
+        self.assertEqual(record.call_kind, CALL_FIRST)
+        self.assertEqual(provider.calls, 1)
+
+    def test_a_repair_call_is_labelled_as_a_repair(self):
+        """Exercised through the counter directly.
+
+        ``assess_one`` supplies no ``repair_request``, so
+        ``generate_structured`` raises instead of repairing and a second call
+        never happens in that path. The labelling still has to be right, since
+        a caller that enables repair would otherwise report its second call as
+        the first.
+        """
+        from app.jobs.assessment import _CountingProvider, build_request
+
+        provider = OllamaLikeProvider(
+            responses=["not json", json.dumps(_good_payload())])
+        counter = _CountingProvider(provider)
+        request = build_request(_job(), PROFILE)
+        counter.generate(request)
+        self.assertEqual(counter.calls, 1)
+        self.assertEqual(counter.last_call_kind, CALL_FIRST)
+        counter.generate(request)
+        self.assertEqual(counter.calls, 2)
+        self.assertEqual(counter.last_call_kind, CALL_REPAIR)
+
+    def test_assess_one_issues_exactly_one_call(self):
+        """No repair is configured, so a malformed answer ends the attempt."""
+        provider = OllamaLikeProvider(responses=["not json"])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(record.call_kind, CALL_FIRST)
+        self.assertEqual(record.status, STATUS_ERROR)
+
+    def test_generation_time_is_recorded(self):
+        record, _ = self._assess_with(OllamaLikeProvider())
+        self.assertIsNotNone(record.generation_seconds)
+        self.assertGreaterEqual(record.generation_seconds, 0.0)
+
+    def test_cold_start_is_recorded_apart_from_generation(self):
+        record = assess_one(_job(), profile=self.profile,
+                            provider_name="fake",
+                            provider=OllamaLikeProvider(),
+                            store=self.assessments,
+                            cold_start_seconds=12.5)
+        self.assertEqual(record.cold_start_seconds, 12.5)
+        self.assertIsNotNone(record.generation_seconds)
+
+    def test_no_cold_start_is_recorded_when_none_was_measured(self):
+        record, _ = self._assess_with(OllamaLikeProvider())
+        self.assertIsNone(record.cold_start_seconds)
+
+    def test_identity_survives_a_round_trip_through_the_log(self):
+        record, _ = self._assess_with(OllamaLikeProvider())
+        restored = AssessmentRecord.from_dict(record.to_dict())
+        for field in ("provider", "model", "endpoint", "local_only",
+                      "timeout_seconds", "call_kind", "error_type"):
+            self.assertEqual(getattr(restored, field), getattr(record, field), field)
+
+    def test_the_attribute_guesser_is_gone(self):
+        """It raised rather than returning None a second time."""
+        with self.assertRaises(NotImplementedError):
+            _model_name(OllamaLikeProvider(), None)
+
+    def test_the_three_failed_records_are_left_untouched(self):
+        """Historical records are never rewritten to look better."""
+        import json as _json
+        from app.jobs.assessment import AssessmentStore as _S
+
+        path = Path("data/matches.jsonl")
+        if not path.exists():
+            self.skipTest("no trial records in this checkout")
+        before = path.read_bytes()
+        store = _S(Path("data"))
+        records = store.load()
+        self.assertTrue(records)
+        self.assertEqual(path.read_bytes(), before)
+        # The old nulls are still there; the fix applies to future records.
+        self.assertTrue(all(r.status == STATUS_ERROR for r in records))
+
+
+class LocalTrialPlanTests(AssessmentTestCase):
+    def test_a_plan_is_described_without_any_request(self):
+        plan = build_local_trial(["a", "b", "c"], model="llama3.2:latest")
+        self.assertEqual(plan.provider_calls_planned, 3)
+        self.assertTrue(plan.preload)
+        self.assertIs(plan.to_dict()["local_only"], True)
+
+    def test_the_plan_states_its_timeout_and_keep_alive(self):
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        self.assertEqual(plan.timeout_seconds, 600.0)
+        self.assertEqual(plan.keep_alive, "30m")
+
+    def test_the_ceiling_is_three(self):
+        with self.assertRaises(AssessmentUnavailable):
+            build_local_trial(["a", "b", "c", "d"], model="llama3.2:latest")
+
+    def test_duplicate_ids_are_refused(self):
+        with self.assertRaises(AssessmentUnavailable):
+            build_local_trial(["a", "a"], model="llama3.2:latest")
+
+    def test_an_empty_selection_is_refused(self):
+        with self.assertRaises(AssessmentUnavailable):
+            build_local_trial([], model="llama3.2:latest")
+
+    def test_a_cloud_model_cannot_even_be_planned(self):
+        for model in ("gpt-oss:120b-cloud", "llama3:cloud", "x-cloud",
+                      "mistral:7b-cloud"):
+            with self.assertRaises(AssessmentUnavailable):
+                build_local_trial(["a"], model=model)
+
+    def test_a_local_model_with_a_hyphen_is_not_mistaken_for_a_cloud_one(self):
+        """`-cloud` matches the suffix; `qwen2.5-coder` is a local model.
+
+        A naive "contains a hyphen" rule would refuse a legitimate local
+        model, and a naive "starts with cloud" rule would miss the real
+        threat. The marker has to be the cloud suffix specifically.
+        """
+        self.assertTrue(is_local_model("qwen2.5-coder:1.5b"))
+        plan = build_local_trial(["a"], model="qwen2.5-coder:1.5b")
+        self.assertIs(plan.to_dict()["local_only"], True)
+
+    def test_a_remote_endpoint_cannot_be_planned(self):
+        with self.assertRaises(AssessmentUnavailable):
+            build_local_trial(["a"], model="llama3.2:latest",
+                              endpoint="https://api.example.com")
+
+    def test_running_without_approval_makes_no_request(self):
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            run_local_trial(plan, profile=self.profile,
+                            store=self.assessments, jobs=[_job()], approved=False)
+        self.assertIn("not approved", str(caught.exception))
+        self.assertFalse(self.assessments.path.exists())
+
+    def test_running_over_the_ceiling_makes_no_request(self):
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        jobs = [_job(job_id=f"j{i}") for i in range(4)]
+        with self.assertRaises(AssessmentUnavailable):
+            run_local_trial(plan, profile=self.profile,
+                            store=self.assessments, jobs=jobs, approved=False)
+
+    def test_running_without_a_profile_makes_no_request(self):
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        with self.assertRaises(AssessmentUnavailable):
+            run_local_trial(plan, profile=CandidateProfile(text=""),
+                            store=self.assessments, jobs=[_job()], approved=True)
 
 
 class NoNetworkInTestsTests(unittest.TestCase):
