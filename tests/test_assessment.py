@@ -41,10 +41,15 @@ from app.jobs.assessment import (
     is_local_endpoint,
     is_local_model,
     plan_only,
+    register_local_ollama,
     registered_providers,
     register_provider,
     resolve_provider,
     to_match_dict,
+)
+from app.jobs.assessment import (
+    LOCAL_OLLAMA_PROVIDER,
+    LOCAL_OLLAMA_URL,
 )
 from app.jobs.match import Confidence, MatchTier
 from app.jobs.models import Job
@@ -855,6 +860,238 @@ class TrialCeilingTests(AssessmentTestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("DRY RUN", result.stdout)
         self.assertIn("writes: 0", result.stdout)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+
+class FakeOllamaFactory:
+    """Stands in for the HTTP Ollama client.
+
+    Installed via :func:`install_fake_ollama`, which patches the symbol the
+    registration path imports *inside* the function. No test opens a socket or
+    constructs a real ``OllamaProvider``.
+    """
+
+    def __init__(self, *, installed=("llama3.2:latest", "qwen2.5-coder:1.5b"),
+                 reachable=True, raises=None, bad_config=False):
+        self.installed = list(installed)
+        self.reachable = reachable
+        self.raises = raises
+        self.bad_config = bad_config
+        self.constructed = []
+        self.generated = 0
+
+    def __call__(self, base_url, model):
+        if self.bad_config:
+            raise ValueError("malformed provider configuration")
+        self.constructed.append((base_url, model))
+        return _FakeOllamaInstance(base_url, model, self)
+
+
+class _FakeOllamaInstance:
+    def __init__(self, base_url, model, factory):
+        self.base_url = base_url
+        self.default_model = model
+        self._factory = factory
+
+    def health_check(self):
+        if self._factory.raises:
+            raise self._factory.raises
+        return self._factory.reachable
+
+    def list_models(self):
+        return list(self._factory.installed)
+
+    def generate(self, request):
+        self._factory.generated += 1
+        raise AssertionError("registration must never generate")
+
+
+def install_fake_ollama(self, factory):
+    """Patch the Ollama client the registration path imports lazily."""
+    from app.llm import ollama as ollama_module
+
+    class _Patched:
+        @staticmethod
+        def OllamaProvider(base_url=LOCAL_OLLAMA_URL, model="llama3.2"):
+            # Routed through the factory so its bad_config branch is exercised.
+            return factory(base_url, model)
+
+    original = ollama_module.OllamaProvider
+    ollama_module.OllamaProvider = _Patched.OllamaProvider
+    self.addCleanup(setattr, ollama_module, "OllamaProvider", original)
+    self.addCleanup(assessment_module()._REGISTRY.clear)
+    return factory
+
+
+def assessment_module():
+    from app.jobs import assessment
+
+    return assessment
+
+
+class LocalOllamaRegistrationTests(AssessmentTestCase):
+    """The only path that may register a real provider.
+
+    Every test here is offline: the Ollama client is patched, so no socket is
+    opened and no model is ever loaded.
+    """
+
+    def setUp(self):
+        super().setUp()
+        assessment_module()._REGISTRY.clear()
+
+    def _register(self, factory, **kwargs):
+        install_fake_ollama(self, factory)
+        params = dict(model="llama3.2:latest", confirmed=True,
+                      profile=self.profile)
+        params.update(kwargs)
+        return register_local_ollama(**params)
+
+    def test_the_approved_model_registers(self):
+        boundary = self._register(FakeOllamaFactory())
+        self.assertEqual(LOCAL_OLLAMA_PROVIDER in registered_providers(), True)
+        self.assertEqual(boundary["model"], "llama3.2:latest")
+        self.assertEqual(boundary["local_only_verdict"], "LOCAL ONLY")
+
+    def test_registration_without_confirmation_is_refused(self):
+        factory = FakeOllamaFactory()
+        install_fake_ollama(self, factory)
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            register_local_ollama(model="llama3.2:latest", confirmed=False,
+                                  profile=self.profile)
+        self.assertIn("not confirmed", str(caught.exception))
+        self.assertEqual(registered_providers(), ())
+        self.assertEqual(factory.constructed, [], "nothing may be contacted")
+
+    def test_a_non_loopback_endpoint_is_refused(self):
+        for endpoint in ("https://api.example.com", "http://10.0.0.5:11434",
+                         "http://example.com:11434"):
+            factory = FakeOllamaFactory()
+            with self.assertRaises(AssessmentUnavailable) as caught:
+                self._register(factory, endpoint=endpoint)
+            self.assertIn("loopback", str(caught.exception))
+            self.assertEqual(registered_providers(), ())
+
+    def test_a_cloud_model_is_refused(self):
+        """The approved-model check is not a suggestion."""
+        for model in ("gpt-oss:120b-cloud", "llama3:cloud", "x-cloud"):
+            factory = FakeOllamaFactory(installed=[model])
+            with self.assertRaises(AssessmentUnavailable) as caught:
+                self._register(factory, model=model)
+            self.assertIn("remote-inference", str(caught.exception))
+            self.assertEqual(registered_providers(), ())
+
+    def test_the_cloud_model_present_on_this_machine_stays_refused(self):
+        """The literal model id that motivated all of this."""
+        factory = FakeOllamaFactory(
+            installed=["llama3.2:latest", "gpt-oss:120b-cloud"])
+        with self.assertRaises(AssessmentUnavailable):
+            self._register(factory, model="gpt-oss:120b-cloud")
+        self.assertEqual(registered_providers(), ())
+
+    def test_an_unavailable_model_is_refused(self):
+        factory = FakeOllamaFactory(installed=["qwen2.5-coder:1.5b"])
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            self._register(factory, model="llama3.2:latest")
+        self.assertIn("not installed locally", str(caught.exception))
+        self.assertEqual(registered_providers(), ())
+
+    def test_unreachable_ollama_is_refused(self):
+        factory = FakeOllamaFactory(reachable=False)
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            self._register(factory)
+        self.assertIn("not reachable", str(caught.exception))
+        self.assertEqual(registered_providers(), ())
+
+    def test_a_raising_health_check_is_refused(self):
+        from app.llm.exceptions import ProviderConnectionError
+
+        factory = FakeOllamaFactory(raises=ProviderConnectionError("down"))
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            self._register(factory)
+        self.assertIn("not reachable", str(caught.exception))
+
+    def test_malformed_provider_configuration_is_refused(self):
+        factory = FakeOllamaFactory(bad_config=True)
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            self._register(factory)
+        self.assertIn("malformed", str(caught.exception))
+        self.assertEqual(registered_providers(), ())
+
+    def test_an_empty_model_is_refused(self):
+        factory = FakeOllamaFactory()
+        with self.assertRaises(AssessmentUnavailable):
+            self._register(factory, model="   ")
+        self.assertEqual(registered_providers(), ())
+
+    def test_the_boundary_is_returned_before_registration(self):
+        boundary = self._register(FakeOllamaFactory())
+        for key in ("endpoint", "model", "local_only_verdict",
+                    "profile_sources", "profile_characters",
+                    "sent_job_fields", "excluded_job_fields",
+                    "full_description_sent"):
+            self.assertIn(key, boundary)
+        self.assertEqual(boundary["profile_characters"], len(PROFILE))
+        self.assertIn("description", boundary["sent_job_fields"])
+        self.assertIn("url", boundary["excluded_job_fields"])
+
+    def test_the_boundary_declares_no_persistence(self):
+        boundary = self._register(FakeOllamaFactory())
+        self.assertFalse(boundary["persisted"])
+        self.assertEqual(boundary["credentials_sent"], 0)
+
+    def test_registration_makes_no_provider_calls(self):
+        factory = FakeOllamaFactory()
+        self._register(factory)
+        self.assertEqual(factory.generated, 0)
+
+    def test_registration_writes_no_assessment(self):
+        self._register(FakeOllamaFactory())
+        self.assertFalse(self.assessments.path.exists())
+        self.assertEqual(AssessmentStore(self.data).load(), [])
+
+    def test_registration_does_not_assess_a_stored_job(self):
+        self.ingest([_record("a1")])
+        self._register(FakeOllamaFactory())
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_registration_is_not_persisted_across_processes(self):
+        """In-process only: a fresh CLI starts with an empty registry."""
+        factory = FakeOllamaFactory()
+        install_fake_ollama(self, factory)
+        register_local_ollama(model="llama3.2:latest", confirmed=True,
+                              profile=self.profile)
+        self.assertTrue(registered_providers())
+        # Nothing on disk records the registration.
+        for path in self.data.rglob("*"):
+            if path.is_file():
+                self.assertNotIn(b"local-ollama", path.read_bytes())
+        # And a fresh import has none.
+        result = self._cli("--providers")
+        self.assertIn("no providers registered", result.stdout)
+
+    def test_naming_the_provider_does_not_register_it(self):
+        """`--provider ollama` must not be a back door to registration."""
+        for name in ("ollama", "local-ollama", "llama3.2:latest"):
+            result = self._cli("--provider", name, "--job-id", "x")
+            self.assertEqual(result.returncode, 1)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_the_cli_refuses_to_register_without_confirmation(self):
+        result = self._cli("--register-local-ollama", "--model", "llama3.2:latest")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("not confirmed", result.stderr)
+        self.assertIn("nothing was registered", result.stderr)
+
+    def test_the_cli_registration_emits_no_assessment_writes(self):
+        install_fake_ollama(self, FakeOllamaFactory())
+        result = self._cli("--register-local-ollama", "--model",
+                           "llama3.2:latest",
+                           "--confirm-local-provider-boundary")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("DATA BOUNDARY", result.stdout)
+        self.assertIn("LOCAL ONLY", result.stdout)
+        self.assertIn("no job was assessed", result.stdout)
         self.assertFalse((self.data / "matches.jsonl").exists())
 
 

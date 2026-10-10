@@ -42,6 +42,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.jobs.assessment import (  # noqa: E402
+    LOCAL_OLLAMA_PROVIDER,
+    LOCAL_OLLAMA_URL,
     MAX_BATCH,
     AssessmentUnavailable,
     assess_batch,
@@ -49,6 +51,7 @@ from app.jobs.assessment import (  # noqa: E402
     describe_data_boundary,
     load_candidate_profile,
     plan_only,
+    register_local_ollama,
     registered_providers,
     resolve_provider,
 )
@@ -95,12 +98,62 @@ def build_parser() -> argparse.ArgumentParser:
                              "zero writes")
     parser.add_argument("--allow-remote", action="store_true",
                         help="permit a non-local provider (off by default)")
+    parser.add_argument("--register-local-ollama", action="store_true",
+                        help="register a local Ollama provider, then exit "
+                             "without assessing anything")
+    parser.add_argument("--confirm-local-provider-boundary", action="store_true",
+                        help="confirm you have read the boundary being printed")
+    parser.add_argument("--endpoint", default=LOCAL_OLLAMA_URL,
+                        help="endpoint for --register-local-ollama "
+                             "(must be loopback)")
     return parser
 
 
 #: A trial is three jobs: enough to see whether the output is worth trusting,
 #: few enough that a bad answer costs little attention.
 TRIAL_CEILING = 3
+
+
+def _print_boundary(boundary) -> None:
+    """The complete boundary, printed immediately before registration."""
+    print("DATA BOUNDARY - what this provider may receive\n")
+    print(f"endpoint            : {boundary['endpoint']}")
+    print(f"model               : {boundary['model']}")
+    print(f"local-only verdict  : {boundary['local_only_verdict']}")
+    print(f"\nprofile sources ({len(boundary['profile_sources'])}):")
+    for source in boundary["profile_sources"]:
+        print(f"  - {source}")
+    print(f"profile characters  : {boundary['profile_characters']}")
+    print(f"\njob fields sent     : {', '.join(boundary['sent_job_fields'])}")
+    print(f"job fields NOT sent : {', '.join(boundary['excluded_job_fields'])}")
+    print(f"full descriptions   : {boundary['full_description_sent']}")
+    print(f"\ncredentials sent    : {boundary['credentials_sent']}")
+    print(f"persisted anywhere  : {boundary['persisted']}")
+    print(f"\nlocally installed models ({len(boundary['installed_models'])}):")
+    for model in boundary["installed_models"]:
+        print(f"  - {model}")
+
+
+def _register_local(args) -> int:
+    """Register the approved local provider, then exit having assessed nothing."""
+    profile = load_candidate_profile(REPO_ROOT)
+    try:
+        boundary = register_local_ollama(
+            model=args.model,
+            endpoint=args.endpoint,
+            confirmed=args.confirm_local_provider_boundary,
+            profile=profile,
+        )
+    except AssessmentUnavailable as error:
+        print(f"refusing to register: {error}", file=sys.stderr)
+        print("nothing was registered and no job was assessed.", file=sys.stderr)
+        return 1
+
+    _print_boundary(boundary)
+    print(f"\nregistered {LOCAL_OLLAMA_PROVIDER!r} in this process only.")
+    print("registration is NOT persisted and does NOT survive this command.")
+    print("no job was assessed. Supply --job-id values to assess anything.")
+    return 0
 
 
 def _print_plan(plan) -> None:
@@ -141,6 +194,9 @@ def main(argv=None) -> int:
     if args.boundary:
         print(describe_data_boundary())
         return 0
+
+    if args.register_local_ollama:
+        return _register_local(args)
 
     selected_ids = list(args.job_id or [])
     if not selected_ids and args.batch is None:
