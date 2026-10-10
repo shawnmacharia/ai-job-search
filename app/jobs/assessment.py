@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,6 +71,11 @@ ASSESSMENT_SCHEMA_VERSION = 1
 #: compared against a new one as though both answered the same question.
 PROMPT_VERSION = "match-v1"
 
+#: The trial ceiling, shared by every path that can send a request. Duplicated
+#: as a constant rather than read from the CLI so the library enforces it even
+#: when the CLI is bypassed.
+TRIAL_JOB_CEILING = 3
+
 #: Refuse a batch larger than this outright rather than truncating it. A caller
 #: asking for 500 has made a mistake, and quietly assessing 20 of them would
 #: hide that.
@@ -84,6 +90,13 @@ STATUS_INSUFFICIENT = "insufficient_evidence"
 STATUS_NOT_EVALUATED = "not_yet_evaluated"
 STATUS_REFUSED = "refused"
 STATUS_ERROR = "error"
+
+#: What a request was for. A repair is not a retry: it is a second attempt at
+#: parsing the same answer, recorded separately so "the model needed fixing"
+#: never reads as "the request was sent twice".
+CALL_FIRST = "first_call"
+CALL_REPAIR = "repair"
+CALL_RETRY = "retry"
 
 
 class AssessmentUnavailable(RuntimeError):
@@ -518,6 +531,85 @@ def load_candidate_profile(repo_root: Path) -> CandidateProfile:
 
 
 @dataclass(frozen=True)
+class ProviderIdentity:
+    """Who answered, and under what conditions.
+
+    Obtained through :meth:`describe`, never by reaching into a provider's
+    attributes. Guessing is how ``model: None`` reached the audit trail: a
+    wrapper around a provider exposes none of the attributes being guessed for,
+    so a real, working provider produced a record that could not say which model
+    answered it. A wrapper now has to *declare* what it is.
+
+    ``model`` is never empty. A provider that cannot name its model is a
+    provider we cannot audit, and that is recorded as ``unknown`` rather than
+    as a silent ``None``.
+    """
+
+    provider: str
+    model: str
+    endpoint: str = ""
+    local_only: Optional[bool] = None
+    timeout_seconds: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        if not self.model:
+            raise ValueError(
+                "provider identity requires a model name; use the literal "
+                "'unknown' when the provider cannot supply one"
+            )
+
+    @property
+    def audit_safe(self) -> bool:
+        """False when the model is a placeholder rather than a real name."""
+        return self.model.casefold() != UNKNOWN_MODEL
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "endpoint": self.endpoint,
+            "local_only": self.local_only,
+            "timeout_seconds": self.timeout_seconds,
+        }
+
+
+#: What gets recorded when a provider genuinely cannot say which model it is.
+#: A visible string, never ``None`` - a null in an audit record reads as a
+#: field nobody filled in rather than a fact someone recorded.
+UNKNOWN_MODEL = "unknown"
+
+
+def identity_of(provider: LLMProvider, provider_name: str) -> ProviderIdentity:
+    """Ask a provider who it is, via the explicit contract only.
+
+    Falls back to :data:`UNKNOWN_MODEL` rather than guessing at ``model`` or
+    ``default_model``: those names are conventions, not a contract, and a
+    wrapper that exposes neither is exactly the case that produced the
+    ``model: None`` records.
+    """
+    describe = getattr(provider, "describe", None)
+    if not callable(describe):
+        return ProviderIdentity(provider=provider_name, model=UNKNOWN_MODEL)
+    try:
+        data = describe() or {}
+    except Exception:  # noqa: BLE001 - an uncooperative provider is unauditable
+        return ProviderIdentity(provider=provider_name, model=UNKNOWN_MODEL)
+    if not isinstance(data, Mapping):
+        return ProviderIdentity(provider=provider_name, model=UNKNOWN_MODEL)
+    model = str(data.get("model") or "").strip() or UNKNOWN_MODEL
+    endpoint = str(data.get("endpoint") or "")
+    local = data.get("local_only")
+    timeout = data.get("timeout_seconds")
+    return ProviderIdentity(
+        provider=provider_name,
+        model=model,
+        endpoint=endpoint,
+        local_only=bool(local) if local is not None else None,
+        timeout_seconds=float(timeout) if timeout is not None else None,
+    )
+
+
+@dataclass(frozen=True)
 class AssessmentRecord:
     """One assessment attempt, whatever became of it.
 
@@ -531,6 +623,21 @@ class AssessmentRecord:
     status: str
     provider: str = ""
     model: str = ""
+    #: Endpoint the request went to, and whether it could leave this machine.
+    endpoint: str = ""
+    local_only: Optional[bool] = None
+    #: The timeout the request was actually given, in seconds. Recorded so a
+    #: timeout can later be read as "the limit was too low" rather than as an
+    #: unqualified provider failure.
+    timeout_seconds: Optional[float] = None
+    #: ``first_call``, ``repair``, or ``retry``. Distinguishes the call that
+    #: did the work from the ones that tried to fix it.
+    call_kind: str = CALL_FIRST
+    #: Wall-clock seconds spent on the model load, kept apart from generation
+    #: so a slow machine is not misread as an incapable model.
+    cold_start_seconds: Optional[float] = None
+    generation_seconds: Optional[float] = None
+    error_type: str = ""
     schema_version: int = ASSESSMENT_SCHEMA_VERSION
     prompt_version: str = PROMPT_VERSION
     tier: str = MatchTier.NOT_YET_EVALUATED.value
@@ -555,6 +662,13 @@ class AssessmentRecord:
             "status": self.status,
             "provider": self.provider,
             "model": self.model,
+            "endpoint": self.endpoint,
+            "local_only": self.local_only,
+            "timeout_seconds": self.timeout_seconds,
+            "call_kind": self.call_kind,
+            "cold_start_seconds": self.cold_start_seconds,
+            "generation_seconds": self.generation_seconds,
+            "error_type": self.error_type,
             "prompt_version": self.prompt_version,
             "tier": self.tier,
             "score": self.score,
@@ -574,7 +688,14 @@ class AssessmentRecord:
             at=str(data.get("at", "")),
             status=str(data.get("status", STATUS_NOT_EVALUATED)),
             provider=str(data.get("provider", "")),
-            model=str(data.get("model", "")),
+            model=str(data.get("model", "")) or UNKNOWN_MODEL,
+            endpoint=str(data.get("endpoint", "")),
+            local_only=data.get("local_only"),
+            timeout_seconds=data.get("timeout_seconds"),
+            call_kind=str(data.get("call_kind", CALL_FIRST)),
+            cold_start_seconds=data.get("cold_start_seconds"),
+            generation_seconds=data.get("generation_seconds"),
+            error_type=str(data.get("error_type", "")),
             schema_version=int(data.get("schema_version", ASSESSMENT_SCHEMA_VERSION) or 1),
             prompt_version=str(data.get("prompt_version", PROMPT_VERSION)),
             tier=str(data.get("tier", MatchTier.NOT_YET_EVALUATED.value)),
@@ -754,6 +875,12 @@ def build_assessment(
     model: str,
     at: str,
     provider_calls: int,
+    endpoint: str = "",
+    local_only: Optional[bool] = None,
+    timeout_seconds: Optional[float] = None,
+    call_kind: str = CALL_FIRST,
+    cold_start_seconds: Optional[float] = None,
+    generation_seconds: Optional[float] = None,
 ) -> AssessmentRecord:
     """Turn raw provider output into a record, verifying every quote.
 
@@ -798,6 +925,12 @@ def build_assessment(
         status=status,
         provider=provider,
         model=model,
+        endpoint=endpoint,
+        local_only=local_only,
+        timeout_seconds=timeout_seconds,
+        call_kind=call_kind,
+        cold_start_seconds=cold_start_seconds,
+        generation_seconds=generation_seconds,
         tier=tier.value,
         score=score,
         confidence=confidence.value,
@@ -859,21 +992,50 @@ class _CountingProvider:
     visible in the record. ``generate_structured`` may issue one repair call on
     top of the first, and a run that reports "1 call" while having made two
     would misrepresent its own cost.
+
+    This wrapper is also why identity is fetched through ``describe`` rather
+    than by attribute guessing: it holds the real provider as ``_inner`` and
+    exposes none of the attributes a guesser would look for, so a wrapper
+    silently erased the model name from the audit trail.
     """
 
     def __init__(self, inner: LLMProvider):
         self._inner = inner
         self.calls = 0
+        #: Wall-clock seconds spent inside ``generate``. Excludes any model
+        #: load, which ``generate`` does not perform.
+        self.generation_seconds = 0.0
+        #: Set by whoever warmed the provider, if anyone did.
+        self.cold_start_seconds: Optional[float] = None
+        #: Whether the last call was a repair rather than the first attempt.
+        self.last_call_kind = CALL_FIRST
 
     def generate(self, request: LLMRequest):
         self.calls += 1
-        return self._inner.generate(request)
+        self.last_call_kind = (
+            CALL_REPAIR if self.calls > 1 else CALL_FIRST)
+        started = time.monotonic()
+        try:
+            return self._inner.generate(request)
+        finally:
+            self.generation_seconds += time.monotonic() - started
 
     def health_check(self) -> bool:
         return self._inner.health_check()
 
     def list_models(self) -> list:
         return self._inner.list_models()
+
+    def describe(self) -> Dict[str, Any]:
+        """Delegate identity explicitly.
+
+        A wrapper that did not do this would force every caller to guess
+        through it, which is the bug being fixed.
+        """
+        describe = getattr(self._inner, "describe", None)
+        if callable(describe):
+            return describe()
+        return {"model": UNKNOWN_MODEL}
 
 
 def assess_one(
@@ -884,25 +1046,35 @@ def assess_one(
     provider: LLMProvider,
     store: AssessmentStore,
     model: Optional[str] = None,
+    cold_start_seconds: Optional[float] = None,
 ) -> AssessmentRecord:
     """Assess one job. Bounded to one generate plus at most one repair.
 
     Every failure path still writes a record. "We tried and could not" is a fact
-    worth keeping; leaving no trace would make a gap look like a decision.
+    worth keeping; leaving no trace would make a gap that looks like a decision.
     """
     at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    # Identity first, through the contract. A provider that cannot name itself
+    # is recorded as ``unknown`` - never ``None``, which reads as a field
+    # nobody filled in rather than a fact someone wrote down.
+    identity = identity_of(provider, provider_name)
 
     if not profile.usable:
         record = AssessmentRecord(
             job_id=str(job.job_id), at=at, status=STATUS_REFUSED,
-            provider=provider_name, error=(
-                "no usable candidate profile, so no claim could be evidenced"
-            ),
+            provider=identity.provider, model=identity.model,
+            endpoint=identity.endpoint, local_only=identity.local_only,
+            timeout_seconds=identity.timeout_seconds,
+            error="no usable candidate profile, so no claim could be evidenced",
+            error_type="ProfileUnavailable",
         )
         store.append(record)
         return record
 
     counter = _CountingProvider(provider)
+    if cold_start_seconds is not None:
+        counter.cold_start_seconds = round(float(cold_start_seconds), 3)
     request = build_request(job, profile.text, model=model)
 
     def validator(text: str) -> Dict[str, Any]:
@@ -910,36 +1082,53 @@ def assess_one(
 
     try:
         payload = generate_structured(counter, request, validator)
-    except (LLMError, ProviderConnectionError, ValueError, json.JSONDecodeError) as exc:
+    except (LLMError, ProviderConnectionError, ValueError,
+            json.JSONDecodeError) as exc:
         record = AssessmentRecord(
             job_id=str(job.job_id), at=at, status=STATUS_ERROR,
-            provider=provider_name, model=model,
+            provider=identity.provider, model=identity.model,
+            endpoint=identity.endpoint, local_only=identity.local_only,
+            timeout_seconds=identity.timeout_seconds
+            or getattr(request, "timeout_seconds", None),
+            call_kind=counter.last_call_kind,
+            cold_start_seconds=counter.cold_start_seconds,
+            generation_seconds=round(counter.generation_seconds, 3),
             error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
             provider_calls=counter.calls,
         )
         store.append(record)
         return record
 
-    resolved_model = _model_name(provider, request)
     record = build_assessment(
         job, profile.text, payload,
-        provider=provider_name,
-        model=resolved_model,
+        provider=identity.provider,
+        model=identity.model,
         at=at,
         provider_calls=counter.calls,
+        endpoint=identity.endpoint,
+        local_only=identity.local_only,
+        timeout_seconds=identity.timeout_seconds
+        or getattr(request, "timeout_seconds", None),
+        call_kind=counter.last_call_kind,
+        cold_start_seconds=counter.cold_start_seconds,
+        generation_seconds=round(counter.generation_seconds, 3),
     )
     store.append(record)
     return record
 
 
 def _model_name(provider: LLMProvider, request: LLMRequest) -> str:
-    """The model actually used, for the audit trail.
+    """Deprecated. Kept only so old callers fail loudly rather than silently.
 
-    Best effort: a provider that will not say which model it used gets an empty
-    string rather than a guess. An invented model name in an audit record is
-    worse than an absent one.
+    Replaced by :func:`identity_of`. Attribute guessing is what wrote
+    ``model: None`` into three real assessment records.
     """
-    if request.model:
+    raise NotImplementedError(
+        "_model_name guessed at provider attributes and produced records with "
+        "model=None; use identity_of() and the describe() contract instead."
+    )
+    if request.model:  # pragma: no cover - unreachable, kept for the old diff
         return str(request.model)
     inner = getattr(provider, "_inner", provider)
     for attribute in ("model", "default_model"):
@@ -947,6 +1136,130 @@ def _model_name(provider: LLMProvider, request: LLMRequest) -> str:
         if isinstance(value, str) and value:
             return value
     return ""
+
+
+#: Local-model execution defaults. Chosen to be explicit rather than inherited,
+#: because the three 120s timeouts were the direct result of a limit nobody
+#: chose on purpose.
+LOCAL_TRIAL_TIMEOUT_SECONDS = 600.0
+LOCAL_TRIAL_KEEP_ALIVE = "30m"
+
+
+@dataclass(frozen=True)
+class LocalTrialPlan:
+    """What a local-model batch would do, decided before it does anything.
+
+    Exists so the plan can be reviewed and printed without touching the model.
+    It carries no job text and makes no request.
+    """
+
+    endpoint: str
+    model: str
+    timeout_seconds: float
+    keep_alive: str
+    job_ids: Tuple[str, ...]
+    preload: bool
+
+    @property
+    def provider_calls_planned(self) -> int:
+        # One generate per job; a repair only happens if the first answer is
+        # unparseable, and the ceiling below bounds that.
+        return len(self.job_ids)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "endpoint": self.endpoint,
+            "model": self.model,
+            "timeout_seconds": self.timeout_seconds,
+            "keep_alive": self.keep_alive,
+            "preload": self.preload,
+            "job_count": len(self.job_ids),
+            "provider_calls_planned": self.provider_calls_planned,
+            "local_only": bool(is_local_endpoint(self.endpoint)
+                               and is_local_model(self.model)),
+            "writes_before_approval": 0,
+        }
+
+
+def build_local_trial(
+    job_ids: Sequence[str],
+    *,
+    endpoint: str = LOCAL_OLLAMA_URL,
+    model: str,
+    timeout_seconds: float = LOCAL_TRIAL_TIMEOUT_SECONDS,
+    keep_alive: str = LOCAL_TRIAL_KEEP_ALIVE,
+    preload: bool = True,
+) -> LocalTrialPlan:
+    """Describe a local batch. No request, no write, no model load.
+
+    Refuses a cloud model or a non-loopback endpoint here rather than at
+    send time, so an unsafe plan cannot even be described.
+    """
+    if not is_local_endpoint(endpoint):
+        raise AssessmentUnavailable(
+            f"endpoint {endpoint!r} is not loopback; this mode is local-only")
+    if not is_local_model(model):
+        raise AssessmentUnavailable(
+            f"model {model!r} is remote-inference; refused")
+    ids = tuple(str(j) for j in job_ids)
+    if not ids:
+        raise AssessmentUnavailable("no jobs named")
+    if len(set(ids)) != len(ids):
+        raise AssessmentUnavailable("duplicate job ids")
+    if len(ids) > TRIAL_JOB_CEILING:
+        raise AssessmentUnavailable(
+            f"{len(ids)} jobs given; a trial is at most {TRIAL_JOB_CEILING}")
+    return LocalTrialPlan(
+        endpoint=endpoint, model=model, timeout_seconds=timeout_seconds,
+        keep_alive=keep_alive, job_ids=ids, preload=preload,
+    )
+
+
+def run_local_trial(
+    plan: LocalTrialPlan,
+    *,
+    profile: CandidateProfile,
+    store: AssessmentStore,
+    jobs: Sequence[Job],
+    provider_name: str = LOCAL_OLLAMA_PROVIDER,
+    approved: bool,
+) -> List[AssessmentRecord]:
+    """Run a prepared local batch, once, with the model loaded first.
+
+    ``approved`` must be true. Planning and running are separate on purpose:
+    the plan is printed and reviewed before any of this executes, so a request
+    is never implied by the mere existence of a plan.
+    """
+    if not approved:
+        raise AssessmentUnavailable(
+            "local trial not approved; no request was made")
+    if not profile.usable:
+        raise ProfileUnavailable("no usable candidate profile")
+    if len(jobs) > TRIAL_JOB_CEILING:
+        raise AssessmentUnavailable(
+            f"{len(jobs)} jobs given; a trial is at most {TRIAL_JOB_CEILING}")
+
+    from app.llm.ollama import OllamaProvider
+
+    provider = OllamaProvider(
+        base_url=plan.endpoint, model=plan.model,
+        timeout_seconds=plan.timeout_seconds, keep_alive=plan.keep_alive,
+    )
+    # Locality re-asserted immediately before anything is sent.
+    assert_local_provider(provider)
+
+    # One load, timed on its own. Recorded per assessment so a slow model load
+    # is never read as slow generation.
+    cold_start = provider.preload() if plan.preload else None
+
+    return [
+        assess_one(
+            job, profile=profile, provider_name=provider_name,
+            provider=provider, store=store, model=plan.model,
+            cold_start_seconds=cold_start,
+        )
+        for job in jobs[:TRIAL_JOB_CEILING]
+    ]
 
 
 def assess_batch(
