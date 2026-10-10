@@ -42,10 +42,11 @@ import json
 import re
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from app.jobs.models import Job, RemoteStatus
+from app.sources.budget import DailyBudget, prior_stamps
 from app.sources.transport import AccessError, AccessFetcher, Ledger, RateLimiter
 
 #: The only URL this source may ever request.
@@ -535,12 +536,10 @@ class MyjobmagAdapter:
         self._fetcher = fetcher
         self._source = source
         self._items: Optional[List[FeedItem]] = None
-        # Seeded from the persisted ledger so the daily limit survives across
-        # processes. Without this, "one request per day" would only hold inside
-        # a single run.
-        self._budget = budget or _DailyBudget(
-            DAILY_LIMIT, now=lambda: _now_from(self._fetcher.ledger)()
-        )
+        # Seeded from the *persisted* ledger, not from this process's attempts.
+        # A budget seeded from in-memory state resets on every restart, which
+        # would leave "one request per day" true only until the program closed.
+        self._budget = budget or _seed_budget(self._fetcher.ledger, DAILY_LIMIT)
 
     @property
     def requests_made(self) -> int:
@@ -548,12 +547,23 @@ class MyjobmagAdapter:
                    if a.purpose == "feed")
 
     def fetch(self) -> List[FeedItem]:
-        """Fetch and parse. At most one HTTP request per day."""
+        """Fetch and parse. At most one HTTP request per rolling day.
+
+        The budget is consulted before the fetcher, so a refusal raises without
+        a socket ever being opened and without a network attempt being written
+        to the ledger. Recording a refusal as an attempt would be a false
+        record: no request was made.
+        """
         if self._items is None:
             if not self._budget.allow():
                 raise AccessError(
                     "MyJobMag daily request limit reached; the approved scope "
                     "allows at most one feed request per day"
+                    if not self._budget.untrusted else
+                    "MyJobMag request ledger exists but could not be read; "
+                    "refusing rather than risk a request beyond the approved "
+                    "one-per-day scope. Move the file aside to start a fresh "
+                    "count."
                 )
             response = self._fetcher.get(
                 FEED_URL, source=self._source, purpose="feed")
@@ -599,41 +609,34 @@ class MyjobmagAdapter:
         }
 
 
-class _DailyBudget:
-    """Enforces at most ``limit`` requests per rolling day.
+class _DailyBudget(DailyBudget):
+    """The daily budget, named as this module has always named it.
 
-    ``now`` returns the timestamp of the most recent request already recorded,
-    so the budget can be seeded from a persisted ledger and the limit survives
-    across processes. Injected in tests so the rule is provable without waiting
-    a day.
+    Kept as a subclass rather than a bare alias so the name still reads as
+    MyJobMag's own concept at the call sites, while the enforcement - including
+    the part that survives a restart - lives in one shared place.
     """
 
-    def __init__(self, limit: int = DAILY_LIMIT, *, now=None) -> None:
-        self.limit = max(1, int(limit))
-        self._now = now or (lambda: datetime.now(timezone.utc).timestamp())
-        self._stamps: List[float] = []
 
-    def allow(self) -> bool:
-        cutoff = self._now() - 86400.0
-        self._stamps = [s for s in self._stamps if s > cutoff]
-        return len(self._stamps) < self.limit
+def _seed_budget(ledger: Ledger, limit: int = DAILY_LIMIT) -> _DailyBudget:
+    """Build a budget seeded from the *persisted* ledger.
 
-    def record(self) -> None:
-        self._stamps.append(self._now())
+    The previous implementation read ``ledger.attempts``, which starts empty in
+    every new process. The daily limit therefore held only within a single run:
+    closing the program and reopening it made the budget forget everything, and
+    the first request of the next run was always allowed. Nothing raised and no
+    test failed - it simply stopped being true across restarts.
+
+    An unreadable ledger yields an untrusted budget that refuses every request.
+    "Cannot show the window is empty" is not evidence of compliance.
+    """
+    stamps = prior_stamps(ledger, purpose="feed")
+    if stamps is None:
+        return _DailyBudget(limit, untrusted=True)
+    return _DailyBudget(limit, prior_stamps=stamps)
 
 
-def _now_from(ledger: Ledger):
-    """Timestamp source backed by a ledger's recorded feed attempts."""
-    def latest() -> float:
-        stamps = []
-        for attempt in ledger.attempts:
-            if attempt.purpose != "feed":
-                continue
-            try:
-                stamps.append(datetime.fromisoformat(attempt.at).timestamp())
-            except (TypeError, ValueError):
-                continue
-        # The budget compares against "now"; using the newest recorded stamp
-        # means a fresh ledger simply reports 0 and permits the request.
-        return stamps[-1] if stamps else 0.0
-    return latest
+# ``_now_from`` was removed with the budget rework. It existed only to seed the
+# budget's clock from ``ledger.attempts`` - the in-memory state that the
+# persisted seed replaced. Keeping it would suggest the budget still reads
+# per-process attempts, which is exactly the behaviour that was wrong.

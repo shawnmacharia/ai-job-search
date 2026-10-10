@@ -42,10 +42,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from app.jobs.models import Job
+from app.sources.budget import DailyBudget, prior_stamps
 from app.sources.transport import (
     AccessError,
     AccessFetcher,
@@ -312,33 +313,30 @@ class RemotiveSourceAdapter:
         return job
 
 
-def _prior_api_stamps(ledger: Ledger) -> List[float]:
-    """Timestamps of API requests already recorded on disk, within the last day.
+def _prior_api_stamps(ledger: Ledger) -> Optional[List[float]]:
+    """API request timestamps already on disk, inside the last day.
 
-    Read from the persisted ledger rather than from ``ledger.attempts``, which
-    starts empty in every new process. Without this the daily limit would be
-    enforced only inside a single run, and the first request after a restart
-    would always be allowed - which is precisely when an over-limit request
-    gets made by accident.
+    Delegates to the shared reader so Remotive and MyJobMag cannot drift apart
+    on how history is read - in particular on the fail-closed rule for an
+    unreadable ledger, which Remotive previously handled on its own.
     """
-    from app.jobs.freshness import parse_at
+    return prior_stamps(ledger, purpose="api")
 
-    now = datetime.now(timezone.utc).timestamp()
-    cutoff = now - 86400.0
-    stamps: List[float] = []
-    for attempt in ledger.prior_attempts():
-        if attempt.purpose != "api":
-            continue
-        try:
-            stamp = parse_at(attempt.at).timestamp()
-        except ValueError:
-            # An unparseable timestamp cannot be shown to be recent, so it is
-            # treated as recent rather than ignored. Assuming compliance is the
-            # direction that errs toward breaking a term.
-            stamp = now
-        if stamp > cutoff:
-            stamps.append(stamp)
-    return stamps
+
+def _seed_budget(ledger: Ledger, limit: int = DAILY_LIMIT) -> "_DailyBudget":
+    """Build a budget seeded from the *persisted* ledger.
+
+    Seeded from disk rather than from ``ledger.attempts``, which starts empty in
+    every new process. Without this the limit would hold only inside a single
+    run, and the first request after a restart would always be allowed.
+
+    An unreadable ledger yields an untrusted budget that refuses every request:
+    "cannot show the window is empty" is not evidence of compliance.
+    """
+    stamps = _prior_api_stamps(ledger)
+    if stamps is None:
+        return _DailyBudget(limit, untrusted=True)
+    return _DailyBudget(limit, prior_stamps=stamps)
 
 
 class RemotiveAdapter:
@@ -372,11 +370,7 @@ class RemotiveAdapter:
         # Seeded from the *persisted* ledger, not from this process's attempts.
         # A budget seeded from in-memory state would reset on every restart and
         # "one request per day" would be a claim the code did not keep.
-        self._budget = budget or _DailyBudget(
-            DAILY_LIMIT,
-            now=lambda: _now_from(self._fetcher.ledger)(),
-            prior_stamps=_prior_api_stamps(self._fetcher.ledger),
-        )
+        self._budget = budget or _seed_budget(self._fetcher.ledger, DAILY_LIMIT)
 
     @property
     def requests_made(self) -> int:
@@ -391,6 +385,11 @@ class RemotiveAdapter:
                 raise AccessError(
                     "Remotive daily request limit reached; the approved scope "
                     "allows at most one API request per day"
+                    if not self._budget.untrusted else
+                    "Remotive request ledger exists but could not be read; "
+                    "refusing rather than risk a request beyond the approved "
+                    "one-per-day scope. Move the file aside to start a fresh "
+                    "count."
                 )
             response = self._fetcher.get(
                 API_URL, source=self._source, purpose="api"
@@ -450,40 +449,16 @@ class RemotiveAdapter:
         }
 
 
-class _DailyBudget:
-    """Enforces at most ``limit`` requests per rolling day.
+class _DailyBudget(DailyBudget):
+    """The daily budget, named as this module has always named it.
 
-    ``now`` returns the timestamp of the most recent request already recorded,
-    and ``prior_stamps`` seeds the window from the persisted ledger so the limit
-    survives across processes. Injected in tests so the rule is provable without
-    waiting a day.
+    A thin name over the shared implementation in :mod:`app.sources.budget`, so
+    the rule that survives a restart lives in exactly one place for every source
+    carrying a daily cap, and the two cannot drift apart.
     """
 
-    def __init__(self, limit: int = DAILY_LIMIT, *, now=None,
-                 prior_stamps=None) -> None:
-        self.limit = max(1, int(limit))
-        self._now = now or (lambda: datetime.now(timezone.utc).timestamp())
-        self._stamps: List[float] = list(prior_stamps or ())
 
-    def allow(self) -> bool:
-        cutoff = self._now() - 86400.0
-        self._stamps = [s for s in self._stamps if s > cutoff]
-        return len(self._stamps) < self.limit
-
-    def record(self) -> None:
-        self._stamps.append(self._now())
-
-
-def _now_from(ledger: Ledger):
-    """Timestamp source backed by a ledger's recorded API attempts."""
-    def latest() -> float:
-        from app.jobs.freshness import parse_at
-
-        stamps = [
-            attempt.at for attempt in ledger.attempts if attempt.purpose == "api"
-        ]
-        if stamps:
-            return parse_at(max(stamps)).timestamp()
-        return datetime.now(timezone.utc).timestamp()
-
-    return latest
+# ``_now_from`` was removed with the shared budget. It only seeded the budget's
+# clock from ``ledger.attempts``; the window is now seeded from the persisted
+# ledger by :func:`_seed_budget`. Leaving it would imply the budget still reads
+# per-process attempts.
