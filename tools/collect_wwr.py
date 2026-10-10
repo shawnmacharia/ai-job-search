@@ -148,13 +148,21 @@ def main(argv=None) -> int:
 
     if args.dashboard:
         from app.reporting.jobs import render_dashboard_file
+        from app.jobs.freshness import FreshnessLedger, summarise
         from app.jobs.status import StatusLog
 
+        # Replayed from the append-only observation log, so re-rendering costs
+        # no feed requests. Jobs never observed render as "unknown" rather than
+        # being assumed current.
+        ledger = FreshnessLedger(store)
+        state = ledger.evaluate()
         path = render_dashboard_file(
             store,
             args.dashboard,
             status_log=StatusLog(store),
             attributions={SOURCE: PERMISSION_URL},
+            freshness=state,
+            source_health=summarise(state, observations=ledger.load()),
         )
         print(f"dashboard: {path}")
 

@@ -55,7 +55,7 @@ import hashlib
 import json
 import os
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -174,6 +174,31 @@ class SourceOutcome:
     possible_duplicates: int = 0
     error: Optional[str] = None
     duration_ms: int = 0
+    #: Ids of the jobs this source actually returned. Empty on failure, which
+    #: is why a failed source can never be mistaken for one that found nothing.
+    #: Carried in memory for freshness; omitted from the ledger by
+    #: :meth:`to_dict`.
+    seen_job_ids: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Ledger form. Deliberately omits ``seen_job_ids``.
+
+        A single MyJobMag run returns a hundred ids; writing them into every
+        ``runs.jsonl`` line would make the run ledger grow with corpus size and
+        duplicate what ``data/freshness.jsonl`` already records. The run ledger
+        stays a summary of what happened; freshness holds the detail.
+        """
+        return {
+            "name": self.name,
+            "ok": self.ok,
+            "fetched": self.fetched,
+            "stored": self.stored,
+            "updated": self.updated,
+            "rejected": self.rejected,
+            "possible_duplicates": self.possible_duplicates,
+            "error": self.error,
+            "duration_ms": self.duration_ms,
+        }
 
 
 @dataclass
@@ -248,7 +273,7 @@ class RunRecord:
                 "updated": self.total_updated,
                 "rejected": self.total_rejected,
             },
-            "sources": [asdict(source) for source in self.sources],
+            "sources": [source.to_dict() for source in self.sources],
             "skipped": list(self.skipped),
         }
 
@@ -261,6 +286,11 @@ class StoreResult:
     updated: int = 0
     rejected: int = 0
     possible_duplicates: int = 0
+    #: Ids of every job this call touched, whether newly stored or refreshed.
+    #: Recorded because "which jobs did this source just return?" is the input
+    #: freshness needs; a count cannot distinguish a re-run that returned
+    #: everything from one that returned nothing.
+    job_ids: List[str] = field(default_factory=list)
 
     def as_outcome(self, name: str, fetched: int, duration_ms: int = 0) -> SourceOutcome:
         return SourceOutcome(
@@ -272,6 +302,7 @@ class StoreResult:
             rejected=self.rejected,
             error=None,
             duration_ms=duration_ms,
+            seen_job_ids=list(self.job_ids),
         )
 
 
@@ -567,6 +598,7 @@ class JobStore:
                     result.possible_duplicates += 1
 
             self._append(self.jobs_path, record)
+            result.job_ids.append(record["job_id"])
 
             seen["jobs"][record["job_id"]] = {
                 "first_seen": record["first_seen"],
