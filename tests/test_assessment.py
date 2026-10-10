@@ -1383,12 +1383,17 @@ class ProviderMetadataContractTests(AssessmentTestCase):
         if not path.exists():
             self.skipTest("no trial records in this checkout")
         before = path.read_bytes()
-        store = _S(Path("data"))
-        records = store.load()
+        records = _S(Path("data")).load()
         self.assertTrue(records)
         self.assertEqual(path.read_bytes(), before)
-        # The old nulls are still there; the fix applies to future records.
-        self.assertTrue(all(r.status == STATUS_ERROR for r in records))
+
+        # The first three predate the metadata contract. Backfilling their
+        # model would falsify the log, so they keep the null they were written
+        # with; the fix applies to records written from now on.
+        first3 = [_json.loads(l) for l in
+                  before.decode("utf-8").strip().splitlines()[:3]]
+        self.assertEqual(len(first3), 3)
+        self.assertTrue(all(r.get("model") is None for r in first3))
 
 
 class LocalTrialPlanTests(AssessmentTestCase):
@@ -1661,6 +1666,213 @@ class StructuredOutputTests(AssessmentTestCase):
 
     def test_no_provider_is_contacted_by_this_test_module(self):
         """Proves the whole module runs offline."""
+        self.assertEqual(registered_providers(), ())
+
+
+class ColdStartRecordingTests(AssessmentTestCase):
+    """Preload timing must survive into the audit record.
+
+    A real run lost this measurement because the preload was called by hand in
+    a script instead of through the library, so nothing carried the timing into
+    the record. The fix is a CLI path that routes through
+    :func:`run_local_trial`; these tests pin the behaviour that path depends on.
+    """
+
+    def _patched_ollama(self, *, load_seconds=7.5):
+        """Patch the Ollama client with a preload of a known duration."""
+        from app.llm import ollama as ollama_module
+
+        state = {"loads": 0, "generates": 0}
+
+        class Fake:
+            def __init__(self, base_url="http://localhost:11434",
+                         model="llama3.2:latest", timeout_seconds=600.0,
+                         keep_alive="30m"):
+                self.base_url = base_url
+                self.default_model = model
+                self.timeout_seconds = timeout_seconds
+                self.keep_alive = keep_alive
+
+            def describe(self):
+                return {"model": self.default_model, "endpoint": self.base_url,
+                        "local_only": True,
+                        "timeout_seconds": self.timeout_seconds,
+                        "keep_alive": self.keep_alive}
+
+            def preload(self, timeout_seconds=600.0):
+                state["loads"] += 1
+                return load_seconds
+
+            def generate(self, request):
+                state["generates"] += 1
+                return LLMResponse(text=json.dumps(_good_payload()),
+                                   model=self.default_model)
+
+            def health_check(self):
+                return True
+
+            def list_models(self):
+                return ["llama3.2:latest"]
+
+        original = ollama_module.OllamaProvider
+        ollama_module.OllamaProvider = Fake
+        self.addCleanup(setattr, ollama_module, "OllamaProvider", original)
+        return state
+
+    def test_preload_timing_reaches_every_record(self):
+        """The regression: preload once, but record it on all three."""
+        state = self._patched_ollama(load_seconds=7.5)
+        plan = build_local_trial(["a", "b", "c"], model="llama3.2:latest")
+        jobs = [_job(job_id=f"j{i}") for i in range(3)]
+        records = run_local_trial(plan, profile=self.profile,
+                                  store=self.assessments, jobs=jobs,
+                                  approved=True)
+        self.assertEqual(len(records), 3)
+        for record in records:
+            self.assertIsNotNone(record.cold_start_seconds,
+                                 "cold start missing from the record")
+            self.assertEqual(record.cold_start_seconds, 7.5)
+
+    def test_the_model_is_loaded_once_not_once_per_job(self):
+        state = self._patched_ollama()
+        plan = build_local_trial(["a", "b", "c"], model="llama3.2:latest")
+        jobs = [_job(job_id=f"j{i}") for i in range(3)]
+        run_local_trial(plan, profile=self.profile,
+                        store=self.assessments, jobs=jobs, approved=True)
+        self.assertEqual(state["loads"], 1)
+        self.assertEqual(state["generates"], 3)
+
+    def test_no_preload_means_the_field_is_explicitly_unrecorded(self):
+        """Absent, not zero: no load was measured, so nothing is claimed."""
+        self._patched_ollama()
+        plan = build_local_trial(["a"], model="llama3.2:latest", preload=False)
+        records = run_local_trial(plan, profile=self.profile,
+                                  store=self.assessments, jobs=[_job()],
+                                  approved=True)
+        self.assertIsNone(records[0].cold_start_seconds)
+
+    def test_cold_start_and_generation_are_recorded_separately(self):
+        """A slow load must never be mistaken for slow generation."""
+        self._patched_ollama(load_seconds=12.0)
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        record = run_local_trial(plan, profile=self.profile,
+                                 store=self.assessments, jobs=[_job()],
+                                 approved=True)[0]
+        self.assertEqual(record.cold_start_seconds, 12.0)
+        self.assertIsNotNone(record.generation_seconds)
+        self.assertNotEqual(record.cold_start_seconds,
+                            record.generation_seconds)
+
+    def test_cold_start_survives_the_append_only_log(self):
+        self._patched_ollama(load_seconds=3.25)
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        run_local_trial(plan, profile=self.profile,
+                        store=self.assessments, jobs=[_job()], approved=True)
+        reloaded = AssessmentStore(self.data).load()[0]
+        self.assertEqual(reloaded.cold_start_seconds, 3.25)
+
+    def test_the_nine_historical_records_are_untouched(self):
+        import hashlib
+        from pathlib import Path
+
+        path = Path("data/matches.jsonl")
+        if not path.exists():
+            self.skipTest("no trial records in this checkout")
+        raw = path.read_text(encoding="utf-8")
+        lines = raw.strip().splitlines()
+        first9 = "\n".join(lines[:9]) + "\n"
+        before = hashlib.sha256(first9.encode()).hexdigest()
+        self.assertEqual(len(lines), 9)
+
+        self._patched_ollama()
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        run_local_trial(plan, profile=self.profile,
+                        store=self.assessments, jobs=[_job()], approved=True)
+        # The real log must be untouched: this test wrote to its own temp store.
+        after = hashlib.sha256(first9.encode()).hexdigest()
+        self.assertEqual(before, after)
+        self.assertTrue(path.read_text(encoding="utf-8").startswith(first9))
+
+
+class LocalTrialCliTests(AssessmentTestCase):
+    """The CLI path that makes the preload reachable at all."""
+
+    JOB_ID = "https://www.myjobmag.co.ke/a_fields.php?id=1357205"
+
+    def _main(self, *args):
+        import contextlib
+        import io
+
+        import tools.match as match_cli
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = match_cli.main(["--data-dir", "data", *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def _ingest_one(self):
+        from app.jobs.runner import SourceSpec, run_sources
+        from app.jobs.store import JobStore
+
+        store = JobStore(self.data)
+        run_sources([SourceSpec(
+            name="weworkremotely",
+            fetch=lambda: [{"url": self.JOB_ID, "title": "Role",
+                            "company": "Acme", "location": "Nairobi, Kenya",
+                            "description": "Work."}])], store=store)
+        return self.JOB_ID
+
+    def test_a_cloud_model_is_refused_before_any_request(self):
+        job_id = self._ingest_one()
+        code, _, err = self._main(
+            "--local-trial", "--job-id", job_id,
+            "--model", "gpt-oss:120b-cloud", "--approve-local-trial")
+        self.assertEqual(code, 1)
+        self.assertIn("remote-inference", err)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_a_remote_endpoint_is_refused_before_any_request(self):
+        job_id = self._ingest_one()
+        code, _, err = self._main(
+            "--local-trial", "--job-id", job_id, "--model", "llama3.2:latest",
+            "--endpoint", "https://api.example.com", "--approve-local-trial")
+        self.assertEqual(code, 1)
+        self.assertIn("loopback", err)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_an_unapproved_trial_is_refused_and_writes_nothing(self):
+        job_id = self._ingest_one()
+        code, _, err = self._main(
+            "--local-trial", "--job-id", job_id, "--model", "llama3.2:latest")
+        self.assertEqual(code, 1)
+        self.assertIn("not approved", err)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_a_missing_model_is_refused(self):
+        job_id = self._ingest_one()
+        code, _, err = self._main(
+            "--local-trial", "--job-id", job_id, "--approve-local-trial")
+        self.assertEqual(code, 1)
+        self.assertIn("requires --model", err)
+
+    def test_the_local_trial_needs_explicit_job_ids(self):
+        """The general "pick something" guard fires first; either way it refuses."""
+        code, _, err = self._main(
+            "--local-trial", "--model", "llama3.2:latest",
+            "--approve-local-trial")
+        self.assertEqual(code, 1)
+        self.assertIn("refusing", err)
+        self.assertIn("assess-everything", err)
+
+    def test_the_ceiling_still_applies_to_the_local_trial(self):
+        self.assertEqual(TRIAL_JOB_CEILING, 3)
+        with self.assertRaises(AssessmentUnavailable):
+            build_local_trial(["a", "b", "c", "d"], model="llama3.2:latest")
+
+    def test_it_does_not_need_a_registered_provider(self):
+        """The trial owns its provider; gating on --provider broke the flag."""
+        from app.jobs.assessment import registered_providers
+
         self.assertEqual(registered_providers(), ())
 
 
