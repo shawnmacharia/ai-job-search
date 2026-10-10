@@ -1807,7 +1807,10 @@ class LocalTrialCliTests(AssessmentTestCase):
 
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = match_cli.main(["--data-dir", "data", *args])
+            # Must point at this test's temp store, not the repo's data
+            # directory - otherwise the test depends on whatever happens to be
+            # checked out, which is why it passed locally and failed on CI.
+            code = match_cli.main(["--data-dir", str(self.data), *args])
         return code, out.getvalue(), err.getvalue()
 
     def _ingest_one(self):
