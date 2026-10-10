@@ -34,6 +34,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -44,16 +45,21 @@ if str(REPO_ROOT) not in sys.path:
 from app.jobs.assessment import (  # noqa: E402
     LOCAL_OLLAMA_PROVIDER,
     LOCAL_OLLAMA_URL,
+    LOCAL_TRIAL_KEEP_ALIVE,
+    LOCAL_TRIAL_TIMEOUT_SECONDS,
     MAX_BATCH,
     AssessmentUnavailable,
+    ProfileUnavailable,
     assess_batch,
     assess_one,
+    build_local_trial,
     describe_data_boundary,
     load_candidate_profile,
     plan_only,
     register_local_ollama,
     registered_providers,
     resolve_provider,
+    run_local_trial,
 )
 from app.jobs.assessment import AssessmentStore  # noqa: E402
 from app.jobs.models import Job  # noqa: E402
@@ -106,12 +112,71 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--endpoint", default=LOCAL_OLLAMA_URL,
                         help="endpoint for --register-local-ollama "
                              "(must be loopback)")
+    parser.add_argument("--local-trial", action="store_true",
+                        help="assess through the local trial path, which loads "
+                             "the model once and records the cold-start "
+                             "duration in every record")
+    parser.add_argument("--timeout", type=float, default=None,
+                        help="request timeout for --local-trial")
+    parser.add_argument("--keep-alive", default=None,
+                        help="model residency for --local-trial, e.g. 30m")
+    parser.add_argument("--preload", dest="preload", action="store_true",
+                        default=True, help="load the model once (default)")
+    parser.add_argument("--no-preload", dest="preload", action="store_false",
+                        help="skip the load; cold start goes unrecorded")
+    parser.add_argument("--allow-repair", action="store_true",
+                        help="permit one bounded repair per job")
+    parser.add_argument("--approve-local-trial", action="store_true",
+                        help="confirm the local trial may send requests")
     return parser
 
 
 #: A trial is three jobs: enough to see whether the output is worth trusting,
 #: few enough that a bad answer costs little attention.
 TRIAL_CEILING = 3
+
+
+def _run_local_trial(args, jobs, profile, assessments):
+    """Assess through the trial path so preload timing is recorded.
+
+    Every refusal here happens before any request: an unapproved trial, a cloud
+    model, a remote endpoint or a batch over the ceiling all return without the
+    model being loaded or contacted.
+    """
+    model = args.model or ""
+    if not model:
+        print("refusing: --local-trial requires --model", file=sys.stderr)
+        return None
+    try:
+        plan = build_local_trial(
+            [str(job.job_id) for job in jobs],
+            endpoint=args.endpoint,
+            model=model,
+            timeout_seconds=args.timeout if args.timeout is not None
+            else LOCAL_TRIAL_TIMEOUT_SECONDS,
+            keep_alive=args.keep_alive or LOCAL_TRIAL_KEEP_ALIVE,
+            preload=args.preload,
+        )
+    except AssessmentUnavailable as error:
+        print(f"refusing: {error}", file=sys.stderr)
+        print("no request was made and nothing was written.", file=sys.stderr)
+        return None
+
+    print(f"local trial plan: {json.dumps(plan.to_dict(), sort_keys=True)}")
+    try:
+        results = run_local_trial(
+            plan, profile=profile, store=assessments, jobs=jobs,
+            provider_name=LOCAL_OLLAMA_PROVIDER,
+            approved=args.approve_local_trial,
+            allow_repair=args.allow_repair,
+        )
+    except (AssessmentUnavailable, ProfileUnavailable) as error:
+        print(f"refusing: {error}", file=sys.stderr)
+        print("no request was made and nothing was written.", file=sys.stderr)
+        return None
+    cold = results[0].cold_start_seconds
+    print(f"cold start: {cold if cold is not None else 'not recorded'}s")
+    return results
 
 
 def _print_boundary(boundary) -> None:
@@ -263,6 +328,21 @@ def main(argv=None) -> int:
         _print_plan(plan)
         return 0
 
+    # Built before either branch: both need it, and constructing it after a
+    # branch that uses it left the name unbound on that path.
+    assessments = AssessmentStore(Path(args.data_dir))
+
+    # The local trial builds and owns its own provider, so it must not be gated on
+    # a registered one. Resolving --provider first would make the flag unusable
+    # and, worse, would report the wrong reason for refusing.
+    if args.local_trial:
+        if chosen is None:
+            print("refusing: --local-trial needs explicit --job-id values",
+                  file=sys.stderr)
+            return 1
+        results = _run_local_trial(args, chosen, profile, assessments)
+        return 0 if results is not None else 1
+
     # Provider first, and unconditionally. An unavailable provider must make no
     # writes at all - not even a record saying it failed, because the request
     # never left the machine and there is nothing to record.
@@ -273,8 +353,6 @@ def main(argv=None) -> int:
         print(f"refusing: {error}", file=sys.stderr)
         print("no assessment was written.", file=sys.stderr)
         return 1
-
-    assessments = AssessmentStore(Path(args.data_dir))
 
     if chosen is not None:
         results = [assess_one(
