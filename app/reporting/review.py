@@ -801,6 +801,44 @@ def _match_state(view: JobView) -> Tuple[str, str]:
     return view.match_tier, ""
 
 
+def _hints_section(report: "ReviewReport", hints) -> str:
+    """The hints block, placed above the queue.
+
+    Deliberately high on the page: a reader who stops at the queue must still
+    have seen that "not assessed" means unassessed, and that what follows is
+    arithmetic rather than judgement.
+    """
+    from app.jobs.hints import LIMITATIONS
+
+    assessed = sum(1 for view, _ in report.queue if view.match_present)
+    parts = [
+        "<section class='hints'>",
+        "<h2>Review hints &mdash; not assessments</h2>",
+        "<p>Shared words, title overlap and explicit seniority wording, "
+        "computed from each posting and your profile. "
+        "<strong>No tier, no score, no judgement about fit.</strong> "
+        "A match assessment comes from verified evidence; these are arithmetic.</p>",
+        f"<p class='meta'>Match assessments in this queue: {assessed} of "
+        f"{len(report.queue)}. Every other row is unassessed by provider.</p>",
+        "<ul class='limitations'>",
+    ]
+    for limitation in LIMITATIONS:
+        parts.append(f"<li>{_e(limitation)}</li>")
+    parts.append("</ul>")
+    if hints:
+        parts.append(
+            "<table><tr><th>Job</th><th>Signals</th></tr>")
+        for job_id in sorted(hints):
+            parts.append(
+                f"<tr><td>{_e(job_id)}</td>"
+                f"<td>{_e(hints[job_id].summary())}</td></tr>")
+        parts.append("</table>")
+    else:
+        parts.append("<p class='empty'>No review hints computed.</p>")
+    parts.append("</section>")
+    return "".join(parts)
+
+
 def _queue_table(entries: Sequence[Tuple[JobView, str]]) -> str:
     """The daily queue, each row carrying the reason it is there."""
     if not entries:
@@ -1032,8 +1070,18 @@ def match_evidence_line(view: JobView) -> str:
     return _match_state(view)[0]
 
 
-def render_report_html(report: ReviewReport, *, title: str = "Daily review") -> str:
-    """Render the report. A pure function of its input; no I/O, no scripts."""
+def render_report_html(
+    report: ReviewReport,
+    *,
+    title: str = "Daily review",
+    hints: Optional[Mapping[str, Any]] = None,
+) -> str:
+    """Render the report. A pure function of its input; no I/O, no scripts.
+
+    ``hints`` carries transparent review signals. They are rendered in their
+    own clearly-labelled section and never touch a match column, a tier, or
+    queue membership.
+    """
     errors = ""
     if report.errors:
         items = "".join(f"<li>{_e(e)}</li>" for e in report.errors)
@@ -1067,6 +1115,7 @@ def render_report_html(report: ReviewReport, *, title: str = "Daily review") -> 
             if report.filters else ""
         )
         + _category_strip(report)
+        + _hints_section(report, hints)
         + "<h2>Actionable queue</h2>"
         "<p class='meta'>Kenya-eligible, not dismissed, not expired. Ordered by "
         "status, then freshness, then match tier, then score where one was "
