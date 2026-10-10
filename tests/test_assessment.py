@@ -38,6 +38,9 @@ from app.jobs.assessment import (
     assess_one,
     build_assessment,
     describe_data_boundary,
+    is_local_endpoint,
+    is_local_model,
+    plan_only,
     registered_providers,
     register_provider,
     resolve_provider,
@@ -54,6 +57,7 @@ from app.reporting.review import build_report, render_report_html
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MATCH_CLI = REPO_ROOT / "tools" / "match.py"
+TRIAL_CEILING = 3
 T0 = "2026-03-01T09:00:00+00:00"
 
 PROFILE = (
@@ -131,6 +135,32 @@ class ExplodingProvider(FakeProvider):
         raise ProviderConnectionError("endpoint unreachable")
 
 
+class RemoteProvider(FakeProvider):
+    """A reachable provider on someone else's machine."""
+
+    def __init__(self, **kwargs):
+        super().__init__(["{}"], **kwargs)
+        self.base_url = "https://api.example.com"
+
+
+class CloudModelProvider(FakeProvider):
+    """Local endpoint, cloud inference. The case that looks safe and is not."""
+
+    def __init__(self, **kwargs):
+        super().__init__(["{}"], **kwargs)
+        self.base_url = "http://localhost:11434"
+        self.default_model = "gpt-oss:120b-cloud"
+
+
+class LocalEndpointProvider(FakeProvider):
+    """The shape of a genuine local provider."""
+
+    def __init__(self, **kwargs):
+        super().__init__(["{}"], **kwargs)
+        self.base_url = "http://localhost:11434"
+        self.default_model = "llama3.2:latest"
+
+
 class AssessmentTestCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -149,6 +179,12 @@ class AssessmentTestCase(unittest.TestCase):
     def ingest(self, records, *, source="weworkremotely"):
         run_sources([SourceSpec(name=source, fetch=lambda: list(records))],
                     store=self.store)
+
+    def _cli(self, *args):
+        return subprocess.run(
+            [sys.executable, str(MATCH_CLI), "--data-dir", str(self.data), *args],
+            capture_output=True, text=True,
+        )
 
 
 def _record(name, *, source="weworkremotely", title="Role", company="Acme",
@@ -629,10 +665,7 @@ class StoreTests(AssessmentTestCase):
 
 class CliTests(AssessmentTestCase):
     def _run(self, *args):
-        return subprocess.run(
-            [sys.executable, str(MATCH_CLI), "--data-dir", str(self.data), *args],
-            capture_output=True, text=True,
-        )
+        return self._cli(*args)
 
     def test_without_a_provider_it_refuses_and_writes_nothing(self):
         self.ingest([_record("a1")])
@@ -675,6 +708,156 @@ class CliTests(AssessmentTestCase):
         self.assertFalse((self.data / "matches.jsonl").exists())
 
 
+class LocalOnlyTests(AssessmentTestCase):
+    """The trial is local-only, and a cloud model hides behind localhost."""
+
+    def clean_registry(self):
+        from app.jobs import assessment
+
+        assessment._REGISTRY.clear()
+        self.addCleanup(assessment._REGISTRY.clear)
+
+    def test_a_loopback_endpoint_is_local(self):
+        for url in ("http://localhost:11434", "http://127.0.0.1:11434",
+                    "http://[::1]:11434"):
+            self.assertTrue(is_local_endpoint(url), url)
+
+    def test_a_remote_endpoint_is_not_local(self):
+        for url in ("https://api.example.com", "http://10.0.0.5:11434",
+                    "http://ollama.example.com"):
+            self.assertFalse(is_local_endpoint(url), url)
+
+    def test_a_non_http_scheme_is_not_local(self):
+        self.assertFalse(is_local_endpoint("ftp://localhost"))
+        self.assertFalse(is_local_endpoint("file:///etc/passwd"))
+
+    def test_no_endpoint_means_in_process_and_is_local(self):
+        self.assertTrue(is_local_endpoint(None))
+
+    def test_a_cloud_model_is_refused_despite_a_local_endpoint(self):
+        """localhost can proxy inference off this machine. The tag is the tell."""
+        self.assertFalse(is_local_model("gpt-oss:120b-cloud"))
+        self.assertFalse(is_local_model("llama3:cloud"))
+
+    def test_an_installed_local_model_passes(self):
+        for model in ("llama3.2:latest", "qwen2.5-coder:1.5b", None):
+            self.assertTrue(is_local_model(model), model)
+
+    def test_resolve_provider_refuses_a_remote_endpoint(self):
+        self.clean_registry()
+        register_provider("remote", lambda: RemoteProvider())
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            resolve_provider("remote")
+        self.assertIn("not local", str(caught.exception))
+
+    def test_resolve_provider_refuses_a_cloud_model_on_a_local_endpoint(self):
+        self.clean_registry()
+        register_provider("cloud", lambda: CloudModelProvider())
+        with self.assertRaises(AssessmentUnavailable) as caught:
+            resolve_provider("cloud")
+        self.assertIn("cloud model", str(caught.exception))
+
+    def test_a_remote_provider_makes_no_assessment_writes(self):
+        self.clean_registry()
+        register_provider("remote", lambda: RemoteProvider())
+        with self.assertRaises(AssessmentUnavailable):
+            resolve_provider("remote")
+        self.assertFalse(self.assessments.path.exists())
+
+    def test_a_local_provider_resolves(self):
+        self.clean_registry()
+        register_provider("local", lambda: LocalEndpointProvider())
+        name, provider = resolve_provider("local")
+        self.assertEqual(name, "local")
+
+    def test_remote_must_be_asked_for_explicitly(self):
+        """Local-only is the default, not a mode you opt into."""
+        self.clean_registry()
+        register_provider("remote", lambda: RemoteProvider())
+        name, provider = resolve_provider("remote", local_only=False)
+        self.assertEqual(name, "remote")
+
+
+class DryRunTests(AssessmentTestCase):
+    def test_a_dry_run_makes_no_provider_calls_and_no_writes(self):
+        provider = FakeProvider([json.dumps(_good_payload())])
+        plan = plan_only([_job()], profile=self.profile, provider_name="fake")
+        self.assertEqual(provider.calls, 0, "no provider may be called")
+        self.assertFalse(self.assessments.path.exists(), "no assessment written")
+        self.assertEqual(plan["writes"], 0)
+
+    def test_a_dry_run_reports_the_profile_boundary(self):
+        plan = plan_only([_job()], profile=self.profile, provider_name="fake")
+        self.assertEqual(plan["profile_sources"], ["test"])
+        self.assertEqual(plan["profile_characters"], len(PROFILE))
+
+    def test_a_dry_run_names_sent_and_excluded_fields(self):
+        plan = plan_only([_job()], profile=self.profile, provider_name="fake")
+        self.assertIn("description", plan["sent_job_fields"])
+        self.assertIn("url", plan["excluded_job_fields"])
+        self.assertIn("salary_min", plan["excluded_job_fields"])
+        self.assertTrue(plan["full_description_sent"])
+
+    def test_a_dry_run_reports_each_job_and_its_source_url(self):
+        plan = plan_only([_job()], profile=self.profile, provider_name="fake")
+        self.assertEqual(len(plan["jobs"]), 1)
+        self.assertEqual(plan["jobs"][0]["job_id"], "j1")
+        self.assertIn("example.test", plan["jobs"][0]["url"])
+
+    def test_a_dry_run_refuses_without_a_profile(self):
+        with self.assertRaises(AssessmentUnavailable):
+            plan_only([_job()], profile=CandidateProfile(text=""),
+                      provider_name="fake")
+
+    def test_the_real_repository_profile_can_be_planned_for(self):
+        from app.jobs.assessment import load_candidate_profile
+
+        profile = load_candidate_profile(REPO_ROOT)
+        plan = plan_only([_job()], profile=profile, provider_name=None)
+        self.assertGreater(plan["profile_characters"], 0)
+        self.assertEqual(plan["provider"], "")
+        self.assertTrue(plan["profile_sources"])
+
+
+class TrialCeilingTests(AssessmentTestCase):
+    def test_the_trial_ceiling_is_three(self):
+        self.assertEqual(TRIAL_CEILING, 3)
+
+    def test_a_dry_run_without_explicit_ids_is_refused(self):
+        """A dry run must not silently become an arbitrary selection."""
+        self.ingest([_record("a1"), _record("a2"), _record("a3")])
+        result = self._cli("--dry-run", "--batch", "3")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("explicit --job-id", result.stderr)
+
+    def test_more_than_three_explicit_ids_are_refused(self):
+        ids = []
+        for name in ("a1", "a2", "a3", "a4"):
+            self.ingest([_record(name)])
+            ids += ["--job-id", self.store.load_jobs()[-1]["job_id"]]
+        result = self._cli(*ids)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("at most 3", result.stderr)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_duplicate_job_ids_are_refused(self):
+        self.ingest([_record("a1")])
+        job_id = self.store.load_jobs()[0]["job_id"]
+        result = self._cli("--job-id", job_id, "--job-id", job_id)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("duplicate", result.stderr)
+
+    def test_a_dry_run_with_three_explicit_ids_succeeds(self):
+        for name in ("a1", "a2", "a3"):
+            self.ingest([_record(name)])
+        ids = [i for r in self.store.load_jobs() for i in ("--job-id", r["job_id"])]
+        result = self._cli(*ids, "--dry-run")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("DRY RUN", result.stdout)
+        self.assertIn("writes: 0", result.stdout)
+        self.assertFalse((self.data / "matches.jsonl").exists())
+
+
 class NoNetworkInTestsTests(unittest.TestCase):
     def test_the_assessment_module_imports_no_transport(self):
         import ast
@@ -687,7 +870,10 @@ class NoNetworkInTestsTests(unittest.TestCase):
                 imported.update(a.name.split(".")[0] for a in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
-        for forbidden in ("socket", "subprocess", "http", "urllib", "requests"):
+        # `urllib.parse` is pure string parsing and is how locality is checked;
+        # what must never appear is a module that can open a connection.
+        for forbidden in ("socket", "subprocess", "http", "requests", "httpx",
+                          "urllib.request", "urllib.error", "ssl"):
             self.assertNotIn(forbidden, imported)
 
 
