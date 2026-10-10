@@ -206,6 +206,45 @@ class Ledger:
     def for_source(self, source: str) -> List[Attempt]:
         return [a for a in self.attempts if a.source == source]
 
+    def prior_attempts(self) -> List[Attempt]:
+        """Attempts already on disk, oldest first.
+
+        ``__init__`` deliberately starts empty so a run never inherits another
+        run's in-memory state, which is why this exists as an explicit read.
+        Unreadable lines are skipped rather than fatal: the ledger is an
+        append-only trail, and a torn final line must not hide the attempts
+        that were recorded successfully before it.
+
+        This is what makes a rate limit survive a restart. A limiter or a
+        counter seeded only from ``self.attempts`` would happily allow the first
+        request of every new process, however recently the last one was made.
+        """
+        if self.path is None:
+            return []
+        from pathlib import Path
+
+        target = Path(self.path)
+        if not target.exists():
+            return []
+        loaded: List[Attempt] = []
+        try:
+            with target.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        loaded.append(Attempt(**data))
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+        except OSError:
+            # No readable history means no prior requests can be proven. A
+            # caller enforcing a limit must treat that as "unknown", not as
+            # "none happened" - see the budget in app.sources.remotive.
+            return []
+        return loaded
+
 
 class RateLimiter:
     """Enforces a minimum interval between requests.
