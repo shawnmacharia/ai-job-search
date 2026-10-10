@@ -15,8 +15,11 @@ What it will not do
   decision by the server, not a transient fault. Retrying it would be
   hammering a site that just said no - and working around a bot challenge is a
   hard stop for this project, so those are reported, not circumvented.
-* **No credential handling.** No cookies, no authentication, no headers
-  carrying identity. One identifying user agent, and nothing else.
+* **No credential handling.** No cookies, no authentication, no secrets. The
+  only identifying header is the single user agent, and the only thing it may
+  carry beyond the product token is a contact the operator chose to publish.
+  That contact is read from a gitignored file and never from source, so no
+  personal detail enters the repository - see :data:`CONTACT_PATH`.
 * **No unbounded retries.** Attempts are capped and backed off.
 
 Retries happen only for genuinely transient conditions: a timeout, a
@@ -26,17 +29,71 @@ connection error, ``5xx``, or ``429`` with a ``Retry-After`` to honour.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 
-#: The one user agent used. It identifies the tool and says what it is doing.
-#: It is never varied per request - rotating identities is evasion.
-USER_AGENT = "ai-job-search-access-check/1.0"
+#: The product token. Tracked in source and deliberately free of any personal
+#: detail, so it can live in a public repository without publishing the
+#: operator's contact.
+USER_AGENT_PRODUCT = "ai-job-search-access-check/1.0"
+
+#: Optional operator contact, read from a gitignored file. Absent by default,
+#: in which case the User-Agent is the bare product token.
+CONTACT_PATH = Path(__file__).resolve().parents[2] / "data" / "contact.json"
+
+#: Anything a server might interpret as a header terminator. A User-Agent is a
+#: single header value; a newline in one would let a crafted contact field
+#: inject arbitrary headers into every request.
+_CONTROL = re.compile(r"[\r\n\x00-\x1f\x7f]")
+
+#: Generous enough for a name plus a contact, tight enough to catch a pasted
+#: paragraph being mistaken for a contact field.
+_MAX_FIELD = 120
+
+
+def _clean_field(value: Any) -> str:
+    """Sanitise one operator-supplied string, or return "" to drop it.
+
+    Silently discarding rather than raising: this file is a convenience, and a
+    malformed one must never stop the tool from running. The worst outcome of a
+    bad value is a bare product token, which is a valid User-Agent.
+    """
+    if not isinstance(value, str):
+        return ""
+    cleaned = _CONTROL.sub("", value).strip()
+    return cleaned[:_MAX_FIELD] if cleaned else ""
+
+
+def _operator_comment() -> str:
+    """The parenthesised comment describing who is behind this tool.
+
+    Read at import time so the result is a single module constant, which is
+    what makes the guarantee meaningful: one string, resolved once, used for
+    every request. Reading it per-request would reintroduce exactly the
+    variability that a constant User-Agent exists to prevent.
+    """
+    try:
+        raw = CONTACT_PATH.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(data, Mapping):
+        return ""
+    purpose = _clean_field(data.get("purpose"))
+    contact = _clean_field(data.get("contact"))
+    parts = [part for part in (purpose, f"contact: {contact}" if contact else "") if part]
+    return "; ".join(parts)
+
+
+_comment = _operator_comment()
+USER_AGENT = f"{USER_AGENT_PRODUCT} ({_comment})" if _comment else USER_AGENT_PRODUCT
 
 #: Statuses that mean "come back later", not "you are refused".
 RETRYABLE_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
