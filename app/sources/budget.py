@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 #: The window a "per day" limit means: a rolling 24 hours, not a calendar day.
 #:
@@ -166,6 +166,38 @@ def prior_stamps(
     except OSError:
         return None
     return stamps
+
+
+def describe_budget(budget: DailyBudget, *, source: str = "") -> Dict[str, Any]:
+    """Describe a budget's current standing in words.
+
+    Exists so an orchestrator can consult a budget *before* deciding to fetch,
+    and report why it declined, without reaching into the object's internals.
+    The reason is a sentence rather than a flag because the two ways a budget
+    can refuse mean different things: the allowance is spent, or the record of
+    it could not be read.
+    """
+    allowed = budget.allow()
+    if budget.untrusted:
+        reason = (
+            "the request ledger exists but could not be read; refusing rather "
+            "than risk a request beyond the approved cadence"
+        )
+    elif allowed:
+        reason = f"within the approved allowance of {budget.limit} request per day"
+    else:
+        reason = (
+            f"the approved allowance of {budget.limit} request per day is "
+            "already spent"
+        )
+    return {
+        "source": source,
+        "allowed": allowed,
+        "reason": reason,
+        "limit": budget.limit,
+        "spent": len(budget._stamps),
+        "untrusted": budget.untrusted,
+    }
 
 
 def _parse(value: Any) -> datetime:

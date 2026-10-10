@@ -46,7 +46,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from app.jobs.models import Job
-from app.sources.budget import DailyBudget, prior_stamps
+from app.sources.budget import DailyBudget, describe_budget, prior_stamps
 from app.sources.transport import (
     AccessError,
     AccessFetcher,
@@ -377,6 +377,14 @@ class RemotiveAdapter:
         return sum(
             1 for a in self._fetcher.ledger.attempts if a.purpose == "api"
         )
+
+    def budget_state(self) -> Dict[str, Any]:
+        """Whether this source may request now, and why not if it may not.
+
+        Lets an orchestrator consult the persisted budget *before* building a
+        fetch plan, so a refusal costs no network call and no attempt record.
+        """
+        return describe_budget(self._budget, source=self._source)
 
     def fetch(self) -> List[ApiJob]:
         """Fetch and parse. At most one HTTP request per day."""
