@@ -1,0 +1,81 @@
+{
+  "_fixture": "SYNTHETIC — hand-authored, not a live capture. See tests/test_remotive.py. Companies, URLs and ids are invented and deliberately generic so no real posting or employer detail is committed.",
+  "job-count": 6,
+  "jobs": [
+    {
+      "id": 1000001,
+      "url": "https://remotive.com/remote-jobs/example-backend-engineer",
+      "title": "Backend Engineer (Go)",
+      "company_name": "Example Payments Ltd",
+      "candidate_required_location": "Worldwide",
+      "job_type": "full_time",
+      "remote": true,
+      "publication_date": "2026-09-28T10:00:00",
+      "candidate_requirements": "5+ years building distributed systems.",
+      "tags": ["golang", "postgresql", "kubernetes"],
+      "description": "<p>We are looking for a <strong>backend engineer</strong> to work on our payments platform.</p><p>You will own services end to end.</p><script>alert('x')</script>"
+    },
+    {
+      "id": 1000002,
+      "url": "https://remotive.com/remote-jobs/example-data-analyst",
+      "title": "Data Analyst",
+      "company_name": "Example Analytics",
+      "candidate_required_location": "EMEA",
+      "job_type": "contract",
+      "remote": true,
+      "publication_date": "2026-09-25T09:30:00",
+      "candidate_requirements": "Strong SQL and one BI tool.",
+      "tags": ["sql", "dbt"],
+      "description": "<p>Join a small analytics team. <br/>Remote within EMEA.</p>"
+    },
+    {
+      "id": 1000003,
+      "url": "https://remotive.com/remote-jobs/example-support-agent",
+      "title": "Customer Support Agent",
+      "company_name": "Example SaaS",
+      "candidate_required_location": "Nairobi, Kenya",
+      "job_type": "full_time",
+      "remote": false,
+      "publication_date": "2026-09-20T08:00:00",
+      "candidate_requirements": "Customer-facing experience.",
+      "tags": ["support"],
+      "description": "<p>Based in Nairobi. This role is on-site and is included here to exercise the non-remote and named-Kenya paths.</p>"
+    },
+    {
+      "id": 1000004,
+      "url": "https://remotive.com/remote-jobs/example-company-as-list",
+      "title": "Solutions Engineer",
+      "company_name": ["Example Cloud Co"],
+      "candidate_required_location": "Anywhere",
+      "job_type": "full_time",
+      "remote": "true",
+      "publication_date": "2026-09-18T12:00:00",
+      "candidate_requirements": "Pre-sales experience.",
+      "tags": [],
+      "description": "<p>Company is published as a list rather than a string; remote as a string rather than a boolean.</p>"
+    },
+    {
+      "id": 1000005,
+      "url": "https://remotive.com/remote-jobs/example-missing-title",
+      "company_name": "Example Broken Co",
+      "candidate_required_location": "Worldwide",
+      "job_type": "full_time",
+      "remote": true,
+      "publication_date": "2026-09-15T00:00:00",
+      "description": "<p>This entry has no title and must be skipped, because a row that cannot be identified cannot be stored or linked back.</p>"
+    },
+    {
+      "id": 1000006,
+      "url": "https://remotive.com/remote-jobs/example-odd-remote",
+      "title": "Platform Engineer",
+      "company_name": "Example Infra",
+      "candidate_required_location": "Americas",
+      "job_type": "full_time",
+      "remote": "maybe",
+      "publication_date": "2026-09-12T00:00:00",
+      "candidate_requirements": "Infra experience.",
+      "tags": ["terraform"],
+      "description": "<p>The remote flag here is a value the parser does not recognise, so it must be preserved as unknown rather than forced to true or false. Eligibility weighs this field.</p>"
+    }
+  ]
+}

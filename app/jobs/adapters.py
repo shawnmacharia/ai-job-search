@@ -341,6 +341,13 @@ from app.sources.myjobmag import MyjobmagSourceAdapter  # noqa: E402
 
 register(MyjobmagSourceAdapter())
 
+# Remotive is registered for the same reason: parsing only, no network on
+# import. The fetch happens in the caller through app.sources.remotive, which
+# is the only place that knows the approved endpoint and its daily limit.
+from app.sources.remotive import RemotiveSourceAdapter  # noqa: E402
+
+register(RemotiveSourceAdapter())
+
 
 def adapt_record(source: str, raw: Mapping[str, Any], *, now: Optional[datetime] = None) -> Job:
     """Adapt ``raw`` from ``source`` into a canonical ``Job``.
