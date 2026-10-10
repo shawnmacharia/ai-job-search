@@ -53,11 +53,23 @@ from app.jobs.store import JobStore
 
 
 class ReviewStatus(str, Enum):
-    """A candidate's disposition toward a posting."""
+    """A candidate's disposition toward a posting.
+
+    ``SHORTLISTED`` sits above ``INTERESTED``: both mean "worth pursuing", but a
+    shortlist is the smaller set you would actually act on, and collapsing them
+    would lose the difference between a maybe and a yes.
+
+    There is deliberately **no** ``applied``, ``submitted`` or ``rejected``
+    status. None of those describes a judgement about a posting - they describe
+    an action taken with a third party, and acting is a hard stop for this
+    project. A state implying an application workflow this tool cannot and must
+    not perform would be a fiction written into the record.
+    """
 
     NEW = "new"
     REVIEWING = "reviewing"
     INTERESTED = "interested"
+    SHORTLISTED = "shortlisted"
     DISMISSED = "dismissed"
 
 
