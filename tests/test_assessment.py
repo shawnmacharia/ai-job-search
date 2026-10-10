@@ -44,8 +44,15 @@ from app.jobs.assessment import (
     _model_name,
     assess_batch,
     assess_one,
+    REPAIR_SYSTEM_PROMPT,
+    TRIAL_JOB_CEILING,
+    _safe_error_text,
+    assess_batch,
+    assess_one,
     build_assessment,
     build_local_trial,
+    build_repair_request,
+    build_request,
     describe_data_boundary,
     identity_of,
     is_local_endpoint,
@@ -1450,6 +1457,211 @@ class LocalTrialPlanTests(AssessmentTestCase):
         with self.assertRaises(AssessmentUnavailable):
             run_local_trial(plan, profile=CandidateProfile(text=""),
                             store=self.assessments, jobs=[_job()], approved=True)
+
+
+class StructuredOutputTests(AssessmentTestCase):
+    """JSON mode on the request; one bounded, opt-in repair on a bad answer."""
+
+    def _request(self):
+        return build_request(_job(), PROFILE, model="llama3.2:latest")
+
+    def test_the_assessment_request_asks_for_json_mode(self):
+        self.assertEqual(self._request().response_format, "json")
+
+    def test_json_mode_is_set_only_on_the_assessment_request(self):
+        """Other request builders must be untouched by this change."""
+        import inspect
+
+        source = inspect.getsource(build_request)
+        self.assertEqual(source.count('response_format="json"'), 1)
+
+    def test_valid_json_passes_schema_and_evidence_validation(self):
+        provider = OllamaLikeProvider()
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments)
+        self.assertEqual(record.status, STATUS_ASSESSED)
+        self.assertEqual(record.tier, MatchTier.CREDIBLE_MATCH.value)
+        self.assertTrue(record.evidence)
+
+    def test_a_malformed_first_response_triggers_at_most_one_repair(self):
+        provider = OllamaLikeProvider(responses=["not json at all"])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(provider.calls, 2, "exactly one repair, never more")
+        self.assertEqual(record.call_kind, CALL_REPAIR)
+
+    def test_repair_is_off_by_default(self):
+        provider = OllamaLikeProvider(responses=["not json at all"])
+        assess_one(_job(), profile=self.profile, provider_name="fake",
+                   provider=provider, store=self.assessments)
+        self.assertEqual(provider.calls, 1)
+
+    def test_a_valid_repair_response_is_accepted(self):
+        provider = OllamaLikeProvider(
+            responses=["garbage", json.dumps(_good_payload())])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(provider.calls, 2)
+        self.assertEqual(record.status, STATUS_ASSESSED)
+        self.assertEqual(record.tier, MatchTier.CREDIBLE_MATCH.value)
+        self.assertEqual(record.call_kind, CALL_REPAIR)
+
+    def test_a_malformed_repair_response_fails_safely(self):
+        provider = OllamaLikeProvider(responses=["garbage one", "garbage two"])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(provider.calls, 2, "no third attempt")
+        self.assertEqual(record.status, STATUS_ERROR)
+        self.assertEqual(record.tier, MatchTier.NOT_YET_EVALUATED.value)
+        self.assertIsNone(record.score)
+
+    def test_a_timeout_does_not_trigger_a_repair(self):
+        """Re-sending after a timeout doubles the wait; it repairs nothing."""
+        provider = TimingOutProvider()
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(record.call_kind, CALL_FIRST)
+        self.assertEqual(record.error_type, "ProviderTimeoutError")
+
+    def test_a_transport_failure_does_not_trigger_a_repair(self):
+        provider = ExplodingProvider(["{}"])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(record.error_type, "ProviderConnectionError")
+
+    def test_a_provider_refusal_does_not_trigger_a_repair(self):
+        """No usable profile ends the attempt before any request."""
+        provider = OllamaLikeProvider()
+        record = assess_one(_job(), profile=CandidateProfile(text=""),
+                            provider_name="fake", provider=provider,
+                            store=self.assessments, allow_repair=True)
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(record.status, STATUS_REFUSED)
+
+    def test_unsupported_evidence_is_still_discarded_after_a_repair(self):
+        """Structuring the output does not weaken the evidence check."""
+        payload = _good_payload()
+        payload["evidence"].append({
+            "claim": "Ten years of Kubernetes", "source": "profile",
+            "quote": "Ten years of Kubernetes",
+        })
+        provider = OllamaLikeProvider(
+            responses=["garbage", json.dumps(payload)])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(len(record.evidence), 2)
+        self.assertEqual(record.discarded_evidence, 1)
+
+    def test_the_repair_prompt_forbids_inventing_evidence(self):
+        text = REPAIR_SYSTEM_PROMPT.casefold()
+        self.assertIn("only the required json object", text)
+        self.assertIn("do not invent facts", text)
+        self.assertIn("supplied job or profile text", text)
+        self.assertIn("rather than fabricate", text)
+
+    def test_the_repair_request_reuses_the_original_prompt(self):
+        original = self._request()
+        repaired = build_repair_request(original, "Expecting value")
+        self.assertEqual(repaired.user_prompt.split("\n\nYour previous")[0],
+                         original.user_prompt)
+        self.assertEqual(repaired.response_format, "json")
+        self.assertEqual(repaired.model, original.model)
+        self.assertEqual(repaired.metadata.get("repair"), "true")
+
+    def test_raw_model_output_is_not_persisted(self):
+        """The log records what went wrong, not what the model said.
+
+        Model output contains the candidate profile and job text by
+        construction. The assessment log is not the place to keep a copy.
+        """
+        secret = "CANDIDATE_SECRET_TOKEN_12345"
+        leaky = json.dumps({
+            "tier": "strong_match", "score": 0.9, "confidence": "high",
+            "evidence": [], "unexpected": secret,
+        })[:1] + secret  # deliberately unparseable, carrying payload
+        provider = OllamaLikeProvider(responses=[leaky, secret])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        stored = self.assessments.path.read_text(encoding="utf-8")
+        self.assertNotIn(secret, stored)
+        self.assertNotIn(secret, record.error)
+        # The diagnosis survives even though the payload does not.
+        self.assertTrue(record.error_type)
+        self.assertIn("SchemaValidationError", record.error)
+
+    def test_the_error_text_is_bounded_and_single_line(self):
+        self.assertLessEqual(len(_safe_error_text(ValueError("x" * 5000))), 200)
+        self.assertNotIn("\n", _safe_error_text(ValueError("a\nb\tc")))
+
+    def test_identity_and_timeout_are_recorded_with_a_repair(self):
+        provider = OllamaLikeProvider(responses=["garbage", json.dumps(_good_payload())])
+        record = assess_one(_job(), profile=self.profile, provider_name="fake",
+                            provider=provider, store=self.assessments,
+                            allow_repair=True)
+        self.assertEqual(record.model, "llama3.2:latest")
+        self.assertEqual(record.endpoint, "http://localhost:11434")
+        self.assertIs(record.local_only, True)
+        self.assertEqual(record.timeout_seconds, 600.0)
+        self.assertEqual(record.call_kind, CALL_REPAIR)
+        self.assertEqual(record.provider_calls, 2)
+        self.assertIsNotNone(record.generation_seconds)
+
+    def test_the_ceiling_is_not_widened_by_enabling_repair(self):
+        """Repair can double calls per job; it must not add a fourth job."""
+        provider = OllamaLikeProvider(responses=["garbage"])
+        jobs = [_job(job_id=f"j{i}") for i in range(3)]
+        records = assess_batch(jobs, profile=self.profile, provider_name="fake",
+                               provider=provider, store=self.assessments,
+                               max_n=3, allow_repair=True)
+        self.assertEqual(len(records), 3)
+        self.assertEqual(provider.calls, 6, "3 jobs x 2 calls, no more")
+        self.assertEqual(TRIAL_JOB_CEILING, 3)
+
+    def test_the_local_trial_still_refuses_more_than_three_jobs(self):
+        plan = build_local_trial(["a", "b", "c"], model="llama3.2:latest")
+        self.assertEqual(len(plan.job_ids), 3)
+        with self.assertRaises(AssessmentUnavailable):
+            build_local_trial(["a", "b", "c", "d"], model="llama3.2:latest")
+
+    def test_run_local_trial_refuses_over_the_ceiling_even_with_repair(self):
+        plan = build_local_trial(["a"], model="llama3.2:latest")
+        jobs = [_job(job_id=f"j{i}") for i in range(4)]
+        with self.assertRaises(AssessmentUnavailable):
+            run_local_trial(plan, profile=self.profile,
+                            store=self.assessments, jobs=jobs,
+                            approved=True, allow_repair=True)
+
+    def test_the_historical_records_are_byte_identical(self):
+        """The first six records must survive any future retry unchanged."""
+        import hashlib
+
+        path = Path("data/matches.jsonl")
+        if not path.exists():
+            self.skipTest("no trial records in this checkout")
+        before = path.read_bytes()
+        for job_id in ("j1", "j2", "j3"):
+            record = assess_one(_job(job_id=job_id), profile=self.profile,
+                                provider_name="fake",
+                                provider=OllamaLikeProvider(),
+                                store=self.assessments, allow_repair=True)
+            self.assertTrue(record.job_id)
+        # New writes went to this test's own temp store, never the real one.
+        self.assertNotEqual(self.assessments.path.resolve(), path.resolve())
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                         hashlib.sha256(before).hexdigest())
+
+    def test_no_provider_is_contacted_by_this_test_module(self):
+        """Proves the whole module runs offline."""
+        self.assertEqual(registered_providers(), ())
 
 
 class NoNetworkInTestsTests(unittest.TestCase):

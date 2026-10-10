@@ -812,6 +812,11 @@ def build_request(job: Job, profile: str, model: Optional[str] = None) -> LLMReq
         ),
         model=model,
         temperature=0.0,
+        # Ask the provider for structured output. Constraining the decoder is
+        # the difference between "usually valid JSON" and "valid JSON", and it
+        # costs nothing at the evidence stage: a quote the model invents is
+        # still discarded by verify_evidence.
+        response_format="json",
         metadata={"prompt_version": PROMPT_VERSION,
                   "schema_version": str(ASSESSMENT_SCHEMA_VERSION)},
     )
@@ -1038,6 +1043,71 @@ class _CountingProvider:
         return {"model": UNKNOWN_MODEL}
 
 
+#: Sent when a first answer could not be parsed or failed validation.
+#:
+#: Says what the model got wrong without telling it what the right answer is,
+#: and repeats the evidence rule, because a repair is the moment a model is
+#: most tempted to produce something that satisfies the shape while inventing
+#: the content.
+REPAIR_SYSTEM_PROMPT = (
+    "Your previous reply could not be used. Reply again with ONLY the required "
+    "JSON object and nothing else: no prose before it, no explanation after "
+    "it, no markdown fence.\n"
+    "Do not invent facts. Use only evidence present in the supplied job or "
+    "profile text.\n"
+    "If you cannot quote support for something, omit that evidence entirely "
+    "rather than fabricate a quote, and list the gap under missing_requirements "
+    "instead.\n"
+    "If the evidence still does not reach a conclusion, return tier "
+    "'not_yet_evaluated' with confidence 'insufficient'."
+)
+
+
+def build_repair_request(
+    request: LLMRequest, error: str
+) -> LLMRequest:
+    """The single retry, bounded by :func:`generate_structured` to one.
+
+    The original job and profile text is reused rather than re-derived: a
+    repair answers the same question, and rebuilding the prompt would give the
+    model a second, subtly different problem to solve.
+
+    Only the *reason* the last answer was unusable travels with it. The bad
+    answer itself does not - see :func:`_safe_error_text`.
+    """
+    return LLMRequest(
+        system_prompt=REPAIR_SYSTEM_PROMPT,
+        user_prompt=(
+            f"{request.user_prompt}\n\n"
+            f"Your previous reply was rejected: {error}\n"
+            "Return only the JSON object."
+        ),
+        model=request.model,
+        temperature=0.0,
+        max_tokens=request.max_tokens,
+        timeout_seconds=request.timeout_seconds,
+        response_format=request.response_format,
+        metadata=dict(request.metadata, repair="true"),
+    )
+
+
+def _safe_error_text(exc: BaseException) -> str:
+    """A bounded, single-line error summary safe to persist.
+
+    Raw model output is never stored. It contains job and profile text by
+    construction, and an assessment log is a different kind of artefact from
+    the prompts that produced it: the log should say *what went wrong*, not
+    keep a copy of the candidate's CV.
+    """
+    message = f"{type(exc).__name__}: {exc}"
+    # Strip anything that could carry payload rather than a diagnosis.
+    message = "".join(
+        " " if (ch < " " or ch == "\x7f") else ch for ch in message
+    )
+    message = " ".join(message.split())
+    return message[:200]
+
+
 def assess_one(
     job: Job,
     *,
@@ -1047,8 +1117,14 @@ def assess_one(
     store: AssessmentStore,
     model: Optional[str] = None,
     cold_start_seconds: Optional[float] = None,
+    allow_repair: bool = False,
 ) -> AssessmentRecord:
-    """Assess one job. Bounded to one generate plus at most one repair.
+    """Assess one job.
+
+    Bounded to one generate, plus **at most one** repair when ``allow_repair``
+    is set and the first answer was unusable. A timeout, a transport failure or
+    a refusal ends the attempt immediately: re-sending after a connection
+    failed does not repair an answer, it just doubles the wait.
 
     Every failure path still writes a record. "We tried and could not" is a fact
     worth keeping; leaving no trace would make a gap that looks like a decision.
@@ -1081,7 +1157,12 @@ def assess_one(
         return _parse_response(text)
 
     try:
-        payload = generate_structured(counter, request, validator)
+        payload = generate_structured(
+            counter, request, validator,
+            # Opt-in, and bounded to one call by generate_structured. Passing
+            # None is what makes a timeout end the attempt instead of retrying.
+            repair_request=build_repair_request if allow_repair else None,
+        )
     except (LLMError, ProviderConnectionError, ValueError,
             json.JSONDecodeError) as exc:
         record = AssessmentRecord(
@@ -1093,7 +1174,7 @@ def assess_one(
             call_kind=counter.last_call_kind,
             cold_start_seconds=counter.cold_start_seconds,
             generation_seconds=round(counter.generation_seconds, 3),
-            error=f"{type(exc).__name__}: {exc}",
+            error=_safe_error_text(exc),
             error_type=type(exc).__name__,
             provider_calls=counter.calls,
         )
@@ -1223,12 +1304,17 @@ def run_local_trial(
     jobs: Sequence[Job],
     provider_name: str = LOCAL_OLLAMA_PROVIDER,
     approved: bool,
+    allow_repair: bool = False,
 ) -> List[AssessmentRecord]:
     """Run a prepared local batch, once, with the model loaded first.
 
     ``approved`` must be true. Planning and running are separate on purpose:
     the plan is printed and reviewed before any of this executes, so a request
     is never implied by the mere existence of a plan.
+
+    ``allow_repair`` permits one extra call per job. The ceiling is checked
+    against *jobs*, so enabling repair cannot widen the batch - it can only
+    double the calls within it.
     """
     if not approved:
         raise AssessmentUnavailable(
@@ -1256,7 +1342,7 @@ def run_local_trial(
         assess_one(
             job, profile=profile, provider_name=provider_name,
             provider=provider, store=store, model=plan.model,
-            cold_start_seconds=cold_start,
+            cold_start_seconds=cold_start, allow_repair=allow_repair,
         )
         for job in jobs[:TRIAL_JOB_CEILING]
     ]
@@ -1271,6 +1357,7 @@ def assess_batch(
     store: AssessmentStore,
     max_n: int = MAX_BATCH,
     model: Optional[str] = None,
+    allow_repair: bool = False,
 ) -> List[AssessmentRecord]:
     """Assess at most ``max_n`` jobs, chosen explicitly by the caller.
 
@@ -1287,6 +1374,7 @@ def assess_batch(
     selected = list(jobs)[:max_n]
     return [
         assess_one(job, profile=profile, provider_name=provider_name,
-                   provider=provider, store=store, model=model)
+                   provider=provider, store=store, model=model,
+                   allow_repair=allow_repair)
         for job in selected
     ]
