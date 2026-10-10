@@ -229,6 +229,125 @@ def resolve_provider(name: Optional[str], *, local_only: bool = True) -> Tuple[s
     return name, provider
 
 
+#: The one endpoint this project will register against. Named rather than
+#: defaulted, so a caller has to choose it and a typo becomes a refusal.
+LOCAL_OLLAMA_URL = "http://localhost:11434"
+
+#: The name the local provider registers under. Deliberately not derived from
+#: ``--provider``, so naming it on the command line can never register it.
+LOCAL_OLLAMA_PROVIDER = "local-ollama"
+
+
+def local_provider_boundary(profile: CandidateProfile, *, endpoint: str,
+                           model: str, installed: Sequence[str]) -> Dict[str, Any]:
+    """The boundary, stated in full, at the moment of registration.
+
+    Returned rather than printed so it can be asserted on in tests, and printed
+    by the caller immediately before registering. Registration is the moment the
+    data boundary starts to apply, so this is the last point at which someone
+    can read it and stop.
+    """
+    return {
+        "endpoint": endpoint,
+        "model": model,
+        "endpoint_is_local": is_local_endpoint(endpoint),
+        "model_is_local": is_local_model(model),
+        "local_only_verdict": "LOCAL ONLY" if (
+            is_local_endpoint(endpoint) and is_local_model(model)
+        ) else "NOT LOCAL",
+        "profile_sources": list(profile.sources),
+        "profile_characters": len(profile.text),
+        "sent_job_fields": sorted(SENT_JOB_FIELDS),
+        "excluded_job_fields": sorted(EXCLUDED_JOB_FIELDS),
+        "full_description_sent": True,
+        "installed_models": list(installed),
+        "credentials_sent": 0,
+        "persisted": False,
+    }
+
+
+def register_local_ollama(
+    *,
+    model: str,
+    endpoint: str = LOCAL_OLLAMA_URL,
+    provider_name: str = LOCAL_OLLAMA_PROVIDER,
+    confirmed: bool,
+    profile: CandidateProfile,
+) -> Dict[str, Any]:
+    """Register a local Ollama provider after checking every claim about it.
+
+    Order matters and is deliberate: configuration is validated before anything
+    is contacted, locality is asserted before registration, and the boundary is
+    built before the provider joins the registry. A caller that has not
+    confirmed gets nothing registered and nothing contacted.
+
+    Raises :class:`AssessmentUnavailable` on every refusal, having registered
+    nothing in all cases.
+    """
+    if not confirmed:
+        raise AssessmentUnavailable(
+            "registration not confirmed. Re-run with "
+            "--confirm-local-provider-boundary once you have read the boundary."
+        )
+    if not is_local_endpoint(endpoint):
+        raise AssessmentUnavailable(
+            f"endpoint {endpoint!r} is not a loopback address; this path "
+            f"registers local providers only"
+        )
+    if not is_local_model(model):
+        raise AssessmentUnavailable(
+            f"model {model!r} is a remote-inference model; refused. A localhost "
+            f"endpoint can still proxy inference off this machine."
+        )
+    if not str(model).strip():
+        raise AssessmentUnavailable("no model named")
+
+    # Imported here so a normal run does not import an HTTP client it will never
+    # use, and so tests can substitute one without touching the network.
+    from app.llm.ollama import OllamaProvider
+
+    try:
+        provider = OllamaProvider(base_url=endpoint, model=model)
+    except Exception as exc:  # noqa: BLE001
+        raise AssessmentUnavailable(
+            f"provider configuration is malformed: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    # The same assertion every other provider goes through, run before the
+    # provider is trusted with anything.
+    assert_local_provider(provider)
+
+    try:
+        reachable = provider.health_check()
+    except Exception as exc:  # noqa: BLE001
+        raise AssessmentUnavailable(
+            f"local Ollama is not reachable: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not reachable:
+        raise AssessmentUnavailable(
+            f"local Ollama at {endpoint} is not reachable; refusing to register"
+        )
+
+    try:
+        installed = list(provider.list_models())
+    except Exception as exc:  # noqa: BLE001
+        raise AssessmentUnavailable(
+            f"could not list local models: {type(exc).__name__}: {exc}"
+        ) from exc
+    if model not in installed:
+        raise AssessmentUnavailable(
+            f"model {model!r} is not installed locally. Installed: "
+            f"{', '.join(installed) or 'none'}"
+        )
+
+    boundary = local_provider_boundary(
+        profile, endpoint=endpoint, model=model, installed=installed)
+
+    register_provider(provider_name, lambda: OllamaProvider(
+        base_url=endpoint, model=model))
+    return boundary
+
+
 #: Job fields placed in the request. Everything not listed here is not sent -
 #: stated explicitly so "what leaves the machine" is answerable by reading a
 #: list rather than by reading the prompt-building code and hoping.
