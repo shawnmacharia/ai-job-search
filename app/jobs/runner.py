@@ -120,6 +120,7 @@ def run_sources(
     run_id: Optional[str] = None,
     now: Optional[Callable[[], float]] = None,
     skipped: Sequence[Any] = (),
+    record_freshness: bool = True,
 ) -> RunRecord:
     """Consult every spec, ingest what each returns, and record one run.
 
@@ -136,6 +137,13 @@ def run_sources(
     from :mod:`app.jobs.sources`. The runner accepts them without knowing where
     they came from, so the registry stays decoupled. They are recorded, and they
     never influence the exit code.
+
+    Every run also appends one observation per source to
+    ``data/freshness.jsonl``, including the ones that failed or were skipped.
+    Recording failures is the point: a source that could not be read is not
+    evidence that its jobs are gone, and the only way to keep that distinction
+    later is to have written the failure down now. Pass
+    ``record_freshness=False`` to suppress the log.
     """
     clock = now or time.monotonic
     moment = observed_at or datetime.now(timezone.utc)
@@ -180,6 +188,13 @@ def run_sources(
 
     run.finished_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     store.record_run(run)
+    if record_freshness:
+        # Imported here rather than at module scope: freshness depends on the
+        # store's data layout, and a module-level import would make that
+        # dependency part of every importer's load order for no benefit.
+        from app.jobs.freshness import FreshnessLedger
+
+        FreshnessLedger(store).record_run(run)
     return run
 
 

@@ -94,12 +94,21 @@ def main(argv=None) -> int:
     }, indent=2))
 
     if args.dashboard:
+        from app.jobs.freshness import FreshnessLedger, summarise
         from app.jobs.status import StatusLog
         from app.reporting.jobs import render_dashboard_file
 
+        # Freshness is replayed from the observation log, so the dashboard can
+        # be re-rendered at any time without re-fetching anything. Jobs with no
+        # recorded observation render as "unknown", which is the truth on a
+        # store collected before this existed - not "active".
+        ledger = FreshnessLedger(store)
+        state = ledger.evaluate()
         path = render_dashboard_file(
             store, args.dashboard, status_log=StatusLog(store),
             attributions={SOURCE: FEEDS_PAGE},
+            freshness=state,
+            source_health=summarise(state, observations=ledger.load()),
         )
         print(f"dashboard: {path}")
 

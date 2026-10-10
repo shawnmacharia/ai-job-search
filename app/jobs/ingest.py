@@ -123,4 +123,5 @@ def ingest(
         rejected=rejected + result.rejected,
         possible_duplicates=result.possible_duplicates,
         error=None,
+        seen_job_ids=list(result.job_ids),
     )

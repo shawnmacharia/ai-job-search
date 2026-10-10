@@ -75,6 +75,17 @@ _TIER_ORDER = {
     "not_yet_evaluated": 4,
 }
 
+_FRESHNESS_ORDER = {"active": 0, "stale": 1, "expired": 2, "unknown": 3}
+
+#: Freshness is styled by state, and ``unknown`` is styled differently from
+#: ``active`` on purpose: an unobserved job is not a verified-current one.
+_FRESHNESS_CLASS = {
+    "active": "fresh-active",
+    "stale": "fresh-stale",
+    "expired": "fresh-expired",
+    "unknown": "fresh-unknown",
+}
+
 _STYLE = """
 :root{color-scheme:light dark}
 body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:2rem;line-height:1.45}
@@ -88,6 +99,10 @@ th,td{border:1px solid #d1d5db;padding:.45rem .55rem;text-align:left;vertical-al
 th{background:#111827;color:#f9fafb;position:sticky;top:0}
 td.wrap{max-width:26rem}
 .ok{background:#dcfce7}.no{background:#fee2e2}.maybe{background:#fef9c3}
+.fresh-active{background:#ecfdf5}
+.fresh-stale{background:#fffbeb}
+.fresh-expired{background:#f3f4f6;color:#6b7280}
+.fresh-unknown{background:#f9fafb;color:#9ca3af}
 .flag{background:#f3f4f6;color:#374151;font-size:.82rem;border-radius:.25rem;
       padding:.05rem .3rem;display:inline-block;margin:0 .2rem .2rem 0}
 .badge{font-size:.82rem;color:#6b7280}
@@ -155,6 +170,18 @@ class JobView:
     #: rather than from the eligibility verdict, which weighs other signals too.
     country: str = ""
 
+    # --- freshness ----------------------------------------------------
+    #: How current the job is, from source observations alone. Defaults to
+    #: ``unknown`` rather than ``active``: a job with no observation recorded
+    #: has not been vouched for, and defaulting it to active would claim
+    #: currency nobody has checked.
+    freshness: str = "unknown"
+    freshness_last_seen: str = ""
+    freshness_detail: str = ""
+    #: Which sources still list this job, and which have gone quiet.
+    freshness_sources: List[str] = field(default_factory=list)
+    freshness_missing_sources: List[str] = field(default_factory=list)
+
     # --- match assessment -------------------------------------------
     match_tier: str = "not_yet_evaluated"
     match_score: Optional[float] = None
@@ -168,6 +195,10 @@ class JobView:
     #: assessment" from "an assessment ran and found the evidence too thin to
     #: support a tier". Those are different facts and must not render alike.
     match_present: bool = False
+
+    @property
+    def freshness_class(self) -> str:
+        return _FRESHNESS_CLASS.get(self.freshness, _FRESHNESS_CLASS["unknown"])
 
     @property
     def verdict_class(self) -> str:
@@ -380,6 +411,61 @@ def _match_fields(match: Any) -> Dict[str, Any]:
     }
 
 
+def _freshness_fields(freshness: Any) -> Dict[str, Any]:
+    """Map a :class:`~app.jobs.freshness.JobFreshness` (or its dict form).
+
+    Degrades to the explicit ``unknown`` state, never to ``active``: no
+    observation means no currency has been established.
+    """
+    empty = {
+        "freshness": "unknown",
+        "freshness_last_seen": "",
+        "freshness_detail": "",
+        "freshness_sources": [],
+        "freshness_missing_sources": [],
+    }
+    if freshness is None:
+        return empty
+
+    if isinstance(freshness, Mapping):
+        data = freshness
+    elif hasattr(freshness, "to_dict"):
+        data = freshness.to_dict()
+    else:
+        return empty
+
+    sources = data.get("sources") or {}
+    if not isinstance(sources, Mapping):
+        return empty
+
+    listing: List[str] = []
+    gone: List[str] = []
+    for name, entry in sorted(sources.items()):
+        # A source with no successful observation cannot be counted as either
+        # present or absent; it simply has not spoken.
+        if not (entry or {}).get("last_seen"):
+            continue
+        if int((entry or {}).get("consecutive_misses", 0) or 0) == 0:
+            listing.append(name)
+        else:
+            gone.append(name)
+
+    last_seen = str(data.get("last_seen") or "")
+    detail_parts: List[str] = []
+    if gone:
+        detail_parts.append("no longer listed by " + ", ".join(gone))
+    if listing:
+        detail_parts.append("listed by " + ", ".join(listing))
+
+    return {
+        "freshness": str(data.get("state", "unknown")),
+        "freshness_last_seen": last_seen,
+        "freshness_detail": "; ".join(detail_parts),
+        "freshness_sources": listing,
+        "freshness_missing_sources": gone,
+    }
+
+
 def build_view(
     record: Mapping[str, Any],
     *,
@@ -387,13 +473,15 @@ def build_view(
     match_explanation: Optional[str] = None,
     application_status: Optional[str] = None,
     match: Any = None,
+    freshness: Any = None,
 ) -> JobView:
     """Flatten one stored record into a :class:`JobView`.
 
     ``match_explanation`` and ``application_status`` are supplied by the
     caller. ``match`` is a :class:`~app.jobs.match.MatchResult` (or its dict
     form) when an assessment exists; without one the job reports itself as
-    ``not_yet_evaluated``, which is a real state rather than a blank.
+    ``not_yet_evaluated``, which is a real state rather than a blank. The same
+    applies to ``freshness``: absent it, the job reports ``unknown``.
     """
     job: Mapping[str, Any] = record.get("job", {}) or {}
     verdict = evaluate_eligibility(
@@ -423,6 +511,7 @@ def build_view(
         match_explanation=match_explanation or NOT_EVALUATED,
         application_status=application_status or STATUS_PLACEHOLDER,
         country=_text(job.get("country")),
+        **_freshness_fields(freshness),
         **_match_fields(match),
     )
 
@@ -434,6 +523,13 @@ def _sorted(views: Sequence[JobView], sort: str) -> List[JobView]:
         "date": lambda v: (v.last_seen or "", v.company.casefold()),
         "verdict": lambda v: (v.verdict, v.company.casefold(), v.title.casefold()),
         "title": lambda v: (v.title.casefold(), v.company.casefold()),
+        # Freshest first. Ties fall through to company/title, and `unknown`
+        # sorts last rather than being hidden - an unobserved job is a gap in
+        # our knowledge, not a reason to conceal it.
+        "freshness": lambda v: (
+            _FRESHNESS_ORDER.get(v.freshness, 4),
+            v.company.casefold(), v.title.casefold(),
+        ),
         # Tiers order best-first; unevaluated jobs sort last rather than being
         # dropped, so an unassessed job stays visible.
         "match": lambda v: (
@@ -456,6 +552,7 @@ def _filtered(
     status: Optional[str] = None,
     posted_after: Optional[str] = None,
     uncertain: bool = False,
+    freshness: Optional[str] = None,
 ) -> List[JobView]:
     """Apply filters at render time - there is no client-side scripting.
 
@@ -473,6 +570,8 @@ def _filtered(
         if kenya_eligible and view.verdict != "eligible":
             continue
         if match_tier and view.match_tier != match_tier:
+            continue
+        if freshness and view.freshness != freshness:
             continue
         if status and view.application_status != status:
             continue
@@ -582,6 +681,58 @@ def _match_panel(views: Sequence[JobView]) -> str:
             "analysis, not a poor result.</p>"
         )
     return f"<div class='coverage match-panel'>{parts}</div>{note}"
+
+
+def _freshness_panel(
+    views: Sequence[JobView],
+    source_health: Optional[Mapping[str, Any]] = None,
+) -> str:
+    """Job freshness and source health, as two separate facts.
+
+    They are shown apart on purpose. "40 jobs are stale" and "one source
+    returned nothing" look identical from inside a single merged number, but
+    they mean completely different things: the first is the market moving, the
+    second is us failing to read it. Merging them is how a network problem gets
+    reported as a change in the job market.
+
+    ``source_health`` is the raw
+    :class:`~app.jobs.freshness.SourceHealth` summary. When it is absent the
+    source half is omitted rather than invented.
+    """
+    counts: Dict[str, int] = {}
+    for view in views:
+        counts[view.freshness] = counts.get(view.freshness, 0) + 1
+
+    parts = "".join(
+        f"<span>{html.escape(state)}: <strong>{counts.get(state, 0)}</strong></span>"
+        for state in ("active", "stale", "expired", "unknown")
+    )
+
+    rows = ""
+    if source_health:
+        cells = "".join(
+            "<span>"
+            f"{html.escape(str(entry.get('source', '')))}: "
+            f"<strong>{html.escape(str(entry.get('state', 'unknown')))}</strong>"
+            f" ({int(entry.get('jobs', 0) or 0)} jobs, last seen "
+            f"{html.escape(str(entry.get('last_seen') or 'never'))})</span>"
+            for entry in source_health.get("sources", [])
+        )
+        # Outcome history covers sources that have never produced a job, so a
+        # failing source is visible rather than simply missing from the list.
+        outcomes = "".join(
+            "<span>"
+            f"{html.escape(str(entry.get('source', '')))}: "
+            f"<strong>{html.escape(str(entry.get('outcome', 'unknown')))}</strong>"
+            f" ({int(entry.get('consecutive_failures', 0) or 0)} consecutive "
+            f"failures, last success "
+            f"{html.escape(str(entry.get('last_success') or 'never'))})</span>"
+            for entry in source_health.get("outcomes", [])
+        )
+        body = cells + outcomes
+        rows = f"<div class='coverage'>{body}</div>" if body else ""
+
+    return f"<div class='coverage fresh-panel'>{parts}</div>{rows}"
 
 
 def _coverage_panel(totals: Mapping[str, int], views: Sequence[JobView]) -> str:
@@ -783,6 +934,23 @@ def _match_cell(view: JobView) -> str:
     return "".join(parts)
 
 
+def _freshness_cell(view: JobView) -> str:
+    """One freshness cell: state, when it was last seen, and from where.
+
+    Stale and expired render differently from active but stay visible. Nothing
+    here hides a job - a stale listing may still be open, and dropping it would
+    be a claim the data does not support.
+    """
+    body = f'<span class="badge">{html.escape(view.freshness)}</span>'
+    if view.freshness_last_seen:
+        body += (
+            f'<div class="badge">last seen {html.escape(view.freshness_last_seen)}</div>'
+        )
+    if view.freshness_detail:
+        body += f'<div class="badge">{html.escape(view.freshness_detail)}</div>'
+    return f'<td class="{view.freshness_class}">{body}</td>'
+
+
 def render_row(view: JobView) -> str:
     """One ``<tr>``. Split out so the row markup is directly testable."""
     # ";" so adjacent reasons do not read as one run-on sentence.
@@ -820,6 +988,7 @@ def render_row(view: JobView) -> str:
         + _cell(view.location)
         + _cell_markup(sources_cell or '<span class="badge">—</span>')
         + _cell_markup(flags or '<span class="badge">—</span>')
+        + _freshness_cell(view)
         + _match_cell(view)
         + _cell(view.application_status)
         + _cell(view.posted_date)
@@ -831,7 +1000,7 @@ def render_row(view: JobView) -> str:
 
 _HEADERS = (
     "Eligibility", "Role", "Company", "Location", "Sources", "Flags",
-    "Match", "Status", "Posted", "First seen", "Last seen",
+    "Freshness", "Match", "Status", "Posted", "First seen", "Last seen",
 )
 
 
@@ -843,6 +1012,7 @@ def render_dashboard_html(
     filters: Optional[Mapping[str, Any]] = None,
     runs: Sequence[Mapping[str, Any]] = (),
     attributions: Optional[Mapping[str, str]] = None,
+    source_health: Optional[Mapping[str, Any]] = None,
 ) -> str:
     """Render the review dashboard. Pure function of its inputs."""
     stamp = generated_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -861,6 +1031,7 @@ def render_dashboard_html(
     coverage = _coverage_panel(totals, views)
     attribution = _attribution_footer(views, attributions or {})
     match_panel = _match_panel(views)
+    freshness_panel = _freshness_panel(views, source_health)
 
     if views:
         body = "".join(render_row(view) for view in views)
@@ -888,6 +1059,7 @@ def render_dashboard_html(
         f"{applied}"
         f"<div class='summary'>{summary}</div>"
         f"{coverage}"
+        f"{freshness_panel}"
         f"{table}"
         f"{attribution}</body></html>"
     )
@@ -911,6 +1083,9 @@ def render_dashboard_file(
     match_tier: Optional[str] = None,
     uncertain: bool = False,
     posted_after: Optional[str] = None,
+    freshness: Optional[Mapping[str, Any]] = None,
+    source_health: Optional[Mapping[str, Any]] = None,
+    freshness_state: Optional[str] = None,
 ) -> str:
     """Read the store, render, and write the dashboard. Returns the path written.
 
@@ -924,6 +1099,10 @@ def render_dashboard_file(
     ``matches`` maps job id to a :class:`~app.jobs.match.MatchResult` (or its
     dict form). A job with no entry reports ``not_yet_evaluated`` - a real
     state, not a blank, and never a zero score.
+
+    ``freshness`` maps job id to a :class:`~app.jobs.freshness.JobFreshness`.
+    Jobs with no entry report ``unknown``, which is not the same as ``active``:
+    nobody has checked.
     """
     def status_of(job_id: str) -> Optional[str]:
         if status_log is None:
@@ -945,17 +1124,19 @@ def render_dashboard_file(
             match_explanation=(match_explanations or {}).get(str(record.get("job_id"))),
             application_status=status_of(str(record.get("job_id"))),
             match=(matches or {}).get(str(record.get("job_id"))),
+            freshness=(freshness or {}).get(str(record.get("job_id"))),
         )
         for record in store.load_jobs()
     ]
     selected = _filtered(views, verdict=verdict, source=source, query=query,
                           kenya_eligible=kenya_eligible, match_tier=match_tier,
-                          uncertain=uncertain, posted_after=posted_after)
+                          uncertain=uncertain, posted_after=posted_after,
+                          freshness=freshness_state)
     ordered = _sorted(selected, sort)
     applied = {"verdict": verdict, "source": source, "query": query,
                "sort": sort, "kenya_eligible": kenya_eligible or None,
                "match_tier": match_tier, "uncertain": uncertain or None,
-               "posted_after": posted_after}
+               "posted_after": posted_after, "freshness": freshness_state}
 
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -966,6 +1147,7 @@ def render_dashboard_file(
             filters={key: value for key, value in applied.items() if value},
             runs=store.load_runs(),
             attributions=attributions,
+            source_health=source_health,
         ),
         encoding="utf-8",
     )
