@@ -49,6 +49,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from app.jobs.match import (
@@ -120,12 +121,76 @@ def registered_providers() -> Tuple[str, ...]:
     return tuple(sorted(_REGISTRY))
 
 
-def resolve_provider(name: Optional[str]) -> Tuple[str, LLMProvider]:
+#: Hosts that cannot leave this machine.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+#: Substrings marking a model that runs on Ollama's cloud even though the client
+#: talks to localhost. A `:cloud` tag means the endpoint is local but the
+#: *inference is not* - data goes out and results come back. Locality has to be
+#: checked on the model, not only the URL, or the guarantee is cosmetic.
+CLOUD_MODEL_MARKERS = ("-cloud", ":cloud")
+
+
+def is_local_endpoint(base_url: Optional[str]) -> bool:
+    """True only for a URL that cannot leave this machine."""
+    if not base_url:
+        # No URL means no network endpoint at all (an in-process fake in tests).
+        return True
+    try:
+        parsed = urlparse(base_url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https", ""):
+        return False
+    host = (parsed.hostname or "").casefold()
+    return host in LOCAL_HOSTS
+
+
+def is_local_model(model: Optional[str]) -> bool:
+    """True unless the model is one Ollama proxies to its cloud.
+
+    Checked because ``http://localhost:11434`` is also the address of a cloud
+    routing endpoint. A model tagged ``:cloud`` leaves the machine; treating
+    that as local would make this a promise the code cannot keep.
+    """
+    if not model:
+        return True
+    lowered = str(model).casefold()
+    return not any(marker in lowered for marker in CLOUD_MODEL_MARKERS)
+
+
+def assert_local_provider(provider: LLMProvider) -> None:
+    """Refuse a provider that would send data off this machine.
+
+    Checks both the endpoint and the model. Either being remote is enough to
+    refuse: the trial this exists for is a local-only trial, and a cloud model
+    behind a localhost URL would defeat it while looking local.
+    """
+    base_url = getattr(provider, "base_url", None)
+    if not is_local_endpoint(base_url):
+        raise AssessmentUnavailable(
+            f"provider endpoint {base_url!r} is not local; refusing to send "
+            f"job or profile text off this machine"
+        )
+    model = getattr(provider, "default_model", None) or getattr(provider, "model", None)
+    if not is_local_model(model):
+        raise AssessmentUnavailable(
+            f"model {model!r} is a cloud model: a localhost endpoint can still "
+            f"proxy inference off this machine. Choose a locally installed model."
+        )
+
+
+def resolve_provider(name: Optional[str], *, local_only: bool = True) -> Tuple[str, LLMProvider]:
     """Return ``(name, provider)`` for an explicitly named, reachable provider.
 
     Raises :class:`AssessmentUnavailable` when nothing is registered, when the
-    name is unknown, or when the provider is not reachable. In every one of
-    those cases the caller writes nothing.
+    name is unknown, when the provider is not reachable, or - unless
+    ``local_only`` is turned off - when it is not local. In every one of those
+    cases the caller writes nothing.
+
+    ``local_only`` defaults to True. Turning it off is a deliberate, separate
+    decision from naming a provider, and exists so a future non-local provider
+    is an explicit act rather than a default someone inherits.
     """
     if not name:
         raise AssessmentUnavailable(
@@ -146,6 +211,11 @@ def resolve_provider(name: Optional[str]) -> Tuple[str, LLMProvider]:
             f"provider {name!r} could not be constructed: "
             f"{type(exc).__name__}: {exc}"
         ) from exc
+    if local_only:
+        try:
+            assert_local_provider(provider)
+        except AssessmentUnavailable as exc:
+            raise AssessmentUnavailable(f"provider {name!r}: {exc}") from exc
     try:
         reachable = provider.health_check()
     except Exception as exc:  # noqa: BLE001
@@ -157,6 +227,77 @@ def resolve_provider(name: Optional[str]) -> Tuple[str, LLMProvider]:
             f"provider {name!r} reports itself unreachable; no assessment made"
         )
     return name, provider
+
+
+#: Job fields placed in the request. Everything not listed here is not sent -
+#: stated explicitly so "what leaves the machine" is answerable by reading a
+#: list rather than by reading the prompt-building code and hoping.
+SENT_JOB_FIELDS = ("title", "company", "location", "skills", "description")
+
+#: The complement, named so an operator can see what is withheld rather than
+#: inferring it from silence.
+EXCLUDED_JOB_FIELDS = (
+    "job_id", "url", "remote_status", "country", "region",
+    "salary_min", "salary_max", "salary_currency", "salary_period",
+    "portal", "posted_date", "deadline", "raw_excerpt", "posted_raw",
+    "description_complete",
+)
+
+
+def describe_job_payload(job: Job) -> Dict[str, Any]:
+    """Exactly what would be sent for ``job``, and what would not.
+
+    Full descriptions **are** sent. That is a deliberate choice - requirements
+    are usually inside the description, and truncating it would be truncating
+    the evidence - but it means the largest and most revealing field goes out,
+    so it is named here rather than left to be discovered.
+    """
+    sent = {}
+    for name in SENT_JOB_FIELDS:
+        value = getattr(job, name, None)
+        sent[name] = list(value) if isinstance(value, (list, tuple)) else (value or "")
+    prompt = build_request(job, "x").user_prompt
+    return {
+        "job_id": str(job.job_id),
+        "url": str(job.url),
+        "sent_fields": sorted(sent),
+        "excluded_fields": sorted(EXCLUDED_JOB_FIELDS),
+        "field_char_counts": {k: len(str(v)) for k, v in sent.items()},
+        "full_description_sent": bool(sent["description"]),
+        "total_characters": len(prompt),
+        "profile_included": True,
+    }
+
+
+def plan_only(
+    jobs: Sequence[Job],
+    *,
+    profile: CandidateProfile,
+    provider_name: Optional[str],
+) -> Dict[str, Any]:
+    """Describe a run in full **without calling a provider or writing anything**.
+
+    The boundary cannot honestly be reviewed if showing it requires doing the
+    thing being reviewed. This builds the exact requests that would be sent,
+    reports their size, and returns - so what is approved is what will run.
+    """
+    if not profile.usable:
+        raise ProfileUnavailable(
+            "no usable candidate profile, so nothing could be evidenced"
+        )
+    return {
+        "provider": provider_name or "",
+        "provider_calls_planned": len(jobs),
+        "profile_sources": list(profile.sources),
+        "profile_characters": len(profile.text),
+        "sent_job_fields": sorted(SENT_JOB_FIELDS),
+        "excluded_job_fields": sorted(EXCLUDED_JOB_FIELDS),
+        "full_description_sent": True,
+        "schema_version": ASSESSMENT_SCHEMA_VERSION,
+        "prompt_version": PROMPT_VERSION,
+        "jobs": [describe_job_payload(job) for job in jobs],
+        "writes": 0,
+    }
 
 
 def describe_data_boundary() -> str:
