@@ -54,7 +54,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from app.jobs.freshness import FreshnessLedger, FreshnessState
-from app.jobs.status import DEFAULT_STATUS, StatusError, StatusLog
+from app.jobs.status import DEFAULT_STATUS, ReviewStatus, StatusError, StatusLog
 from app.jobs.store import JobStore
 from app.reporting.jobs import JobView, build_view
 
@@ -159,6 +159,14 @@ class ReviewReport:
     #: Problems that must be shown rather than swallowed. A corrupt store is
     #: reported on the page; it is never dropped so the numbers look clean.
     errors: Tuple[str, ...] = ()
+    #: The daily working queue after filters, with a reason per entry.
+    queue: Tuple[Tuple[JobView, str], ...] = ()
+    #: Filtered views, kept so the report can be re-rendered without re-reading.
+    filtered: Tuple[JobView, ...] = ()
+    filters: Mapping[str, Any] = field(default_factory=dict)
+    #: Category counts over the *unfiltered* corpus, so a filter never makes a
+    #: category look empty when it is not.
+    categories: Mapping[str, int] = field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------
@@ -340,6 +348,231 @@ def _source_rows(
 
 
 # ----------------------------------------------------------------------
+# actionable queue
+# ----------------------------------------------------------------------
+
+#: Statuses that close a job out of the queue. ``dismissed`` is the only one:
+#: there is no "applied" or "rejected" state in this project, because acting is a
+#: hard stop and a status implying an application would be a fiction.
+CLOSED_STATUSES = frozenset({ReviewStatus.DISMISSED.value})
+
+#: Statuses that mean the job is being actively pursued. Kept out of
+#: "never reviewed" but still out of "needs a decision", because nothing is
+#: being asked of the reader.
+PURSUING_STATUSES = frozenset({
+    ReviewStatus.INTERESTED.value, ReviewStatus.SHORTLISTED.value,
+})
+
+#: Tier order for sorting, best first. Unassessed sorts last rather than being
+#: dropped: an unassessed job is still a job.
+_TIER_SORT = {
+    "strong_match": 0, "credible_match": 1, "stretch": 2,
+    "unsuitable": 3, "not_yet_evaluated": 4,
+}
+
+_FRESHNESS_SORT = {
+    FreshnessState.ACTIVE.value: 0,
+    FreshnessState.STALE.value: 1,
+    FreshnessState.EXPIRED.value: 2,
+    "unknown": 3,
+}
+
+#: Status order for the queue: least-settled first.
+#:
+#: The queue exists to surface what still needs a decision, so an unexamined job
+#: leads one that is already shortlisted. Ranking the other way would fill the
+#: top of the list with jobs the candidate has already triaged, which is the
+#: opposite of what a review queue is for. Both decided statuses still appear -
+#: they are just lower down than work nobody has looked at.
+_STATUS_SORT = {
+    ReviewStatus.NEW.value: 0,
+    ReviewStatus.REVIEWING.value: 1,
+    ReviewStatus.INTERESTED.value: 2,
+    ReviewStatus.SHORTLISTED.value: 3,
+    ReviewStatus.DISMISSED.value: 4,
+}
+
+
+def _posted_rank(value: str) -> Optional[float]:
+    """A posted date as a sortable epoch, or ``None`` when it is not one.
+
+    Descending order on a string is not something a sort key can express, so
+    the timestamp is reduced to a number and negated at the call site instead.
+    An unparseable or missing date yields ``None`` rather than epoch zero, which
+    would sort undated postings as if they were from 1970 and float them to the
+    top of a queue.
+    """
+    text = _text(value).strip()
+    if not text:
+        return None
+    from app.jobs.freshness import parse_at
+
+    try:
+        return parse_at(text).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def queue_key(view: JobView) -> Tuple[Any, ...]:
+    """The total order for the actionable queue.
+
+    Every component is deterministic, and two of them are guarded rather than
+    assumed:
+
+    - **score** is consulted only when one was actually calculated. A job with
+      no assessment must not sort as though it scored zero, which would quietly
+      bury exactly the jobs nobody has looked at yet.
+    - **job id** is the final tie-breaker. Without it the order would depend on
+      input ordering, and a queue that reshuffles between two identical runs is
+      a queue nobody trusts.
+    """
+    posted = _posted_rank(view.posted_date)
+    return (
+        _STATUS_SORT.get(view.application_status, 5),
+        _FRESHNESS_SORT.get(view.freshness, 4),
+        _TIER_SORT.get(view.match_tier, 5),
+        # Missing score sorts after any real score, never as zero.
+        (1, 0.0) if view.match_score is None else (0, -view.match_score),
+        # Undated postings sort last, not as epoch zero.
+        (1, 0.0) if posted is None else (0, -posted),
+        view.job_id,
+    )
+
+
+def why_actionable(view: JobView) -> str:
+    """The one-sentence reason this job is in the queue.
+
+    A queue that does not say why is a list to re-derive by hand. Each clause
+    names a condition that was checked, so a reader can tell whether a job
+    belongs here without re-reading the policy.
+    """
+    bits = ["Kenya-eligible"]
+    if view.application_status == ReviewStatus.NEW.value:
+        bits.append("not yet reviewed")
+    elif view.application_status == ReviewStatus.REVIEWING.value:
+        bits.append("under review, undecided")
+    else:
+        bits.append(f"status: {view.application_status}")
+    if view.freshness == FreshnessState.ACTIVE.value:
+        bits.append("current")
+    else:
+        bits.append(f"freshness {view.freshness}")
+    if not view.match_present:
+        bits.append("no match assessment yet - still reviewable")
+    elif not view.match_evaluated:
+        bits.append("match assessed but evidence thin")
+    if view.possible_duplicate:
+        bits.append("possible duplicate - check before acting")
+    return "; ".join(bits)
+
+
+def build_actionable(views: Sequence[JobView]) -> List[JobView]:
+    """The daily working queue, in a deterministic order.
+
+    Membership: Kenya-eligible, not closed, not expired. A job with no match
+    assessment is *in* the queue - missing analysis is not a reason to hide a
+    job from someone deciding what to read.
+    """
+    selected = [
+        v for v in views
+        if v.verdict == "eligible"
+        and v.application_status not in CLOSED_STATUSES
+        and v.freshness != FreshnessState.EXPIRED.value
+    ]
+    return sorted(selected, key=queue_key)
+
+
+def apply_filters(
+    views: Sequence[JobView],
+    *,
+    source: Optional[str] = None,
+    eligibility: Optional[str] = None,
+    status: Optional[str] = None,
+    match_tier: Optional[str] = None,
+    uncertain: Optional[bool] = None,
+    posted_after: Optional[str] = None,
+    freshness: Optional[str] = None,
+    possible_duplicate: Optional[bool] = None,
+) -> List[JobView]:
+    """Narrow a list by any combination of read-only filters.
+
+    Every filter is conjunctive: supplying two narrows by both. ``uncertain``
+    means "assessed but the evidence will not carry weight", which is a
+    different question from "never assessed" - both are offered because
+    neither subsumes the other.
+    """
+    result: List[JobView] = []
+    for view in views:
+        if source and source not in view.sources:
+            continue
+        if eligibility and view.verdict != eligibility:
+            continue
+        if status and view.application_status != status:
+            continue
+        if match_tier and view.match_tier != match_tier:
+            continue
+        if uncertain is True and not view.match_uncertain:
+            continue
+        if uncertain is False and view.match_uncertain:
+            continue
+        if posted_after is not None:
+            # Compared as parsed dates, never as raw text. ``posted_date``
+            # carries a "not yet evaluated" sentinel when the source published
+            # no date; compared as a string that sentinel sorts *above* every
+            # real ISO timestamp ("n" > "2"), so an undated job would otherwise
+            # pass a filter meant to show only recent ones. A job whose date we
+            # cannot read cannot be shown to be after a given date, so it does
+            # not match - and this is the only place in the project where an
+            # unreadable value narrows a result set rather than widening it.
+            moment = _posted_rank(view.posted_date)
+            cutoff = _posted_rank(posted_after)
+            if moment is None or cutoff is None or moment < cutoff:
+                continue
+        if freshness and view.freshness != freshness:
+            continue
+        if possible_duplicate is True and not view.possible_duplicate:
+            continue
+        if possible_duplicate is False and view.possible_duplicate:
+            continue
+        result.append(view)
+    return result
+
+
+@dataclass(frozen=True)
+class QueueFilters:
+    """Read-only narrowing of the queue. Every field optional; all conjunctive."""
+
+    source: Optional[str] = None
+    eligibility: Optional[str] = None
+    status: Optional[str] = None
+    match_tier: Optional[str] = None
+    uncertain: Optional[bool] = None
+    posted_after: Optional[str] = None
+    freshness: Optional[str] = None
+    possible_duplicate: Optional[bool] = None
+
+    def applied(self) -> Dict[str, Any]:
+        return {
+            key: value for key, value in (
+                ("source", self.source), ("eligibility", self.eligibility),
+                ("status", self.status), ("match_tier", self.match_tier),
+                ("uncertain", self.uncertain), ("posted_after", self.posted_after),
+                ("freshness", self.freshness),
+                ("possible_duplicate", self.possible_duplicate),
+            ) if value is not None
+        }
+
+    def narrow(self, views: Sequence[JobView]) -> List[JobView]:
+        return apply_filters(
+            views,
+            source=self.source, eligibility=self.eligibility, status=self.status,
+            match_tier=self.match_tier, uncertain=self.uncertain,
+            posted_after=self.posted_after, freshness=self.freshness,
+            possible_duplicate=self.possible_duplicate,
+        )
+
+
+# ----------------------------------------------------------------------
 # building
 # ----------------------------------------------------------------------
 
@@ -353,6 +586,7 @@ def build_report(
     freshness: Optional[Mapping[str, Any]] = None,
     attributions: Optional[Mapping[str, str]] = None,
     generated_at: Optional[str] = None,
+    queue_filters: Optional["QueueFilters"] = None,
 ) -> ReviewReport:
     """Assemble the report from everything already on disk.
 
@@ -437,6 +671,27 @@ def build_report(
         if v.application_status == DEFAULT_STATUS.value and v.verdict == "eligible"
     ]
 
+    # The practical daily queue: eligible, not closed, not expired, in a
+    # deterministic order. A job with no match assessment stays in it.
+    queue = build_actionable(views)
+    filtered = queue_filters.narrow(queue) if queue_filters else list(queue)
+    categories = {
+        "never_reviewed": sum(
+            1 for v in views if v.application_status == ReviewStatus.NEW.value),
+        "reviewing_undecided": sum(
+            1 for v in views if v.application_status == ReviewStatus.REVIEWING.value),
+        "interested": sum(
+            1 for v in views if v.application_status == ReviewStatus.INTERESTED.value),
+        "shortlisted": sum(
+            1 for v in views if v.application_status == ReviewStatus.SHORTLISTED.value),
+        "dismissed": sum(
+            1 for v in views if v.application_status == ReviewStatus.DISMISSED.value),
+        "uncertain_eligibility": len(uncertain),
+        "possible_duplicates": len(duplicates),
+        "stale": len(stale),
+        "expired": len(expired),
+    }
+
     try:
         source_rows = _source_rows(
             store, views, store.load_runs(), _ledger_for(store),
@@ -463,6 +718,10 @@ def build_report(
         decisions=decisions,
         total_jobs=len(views),
         errors=tuple(errors),
+        queue=tuple((v, why_actionable(v)) for v in filtered),
+        filtered=tuple(filtered),
+        filters=dict(queue_filters.applied()) if queue_filters else {},
+        categories=categories,
     )
 
 
@@ -540,6 +799,62 @@ def _match_state(view: JobView) -> Tuple[str, str]:
     if view.match_uncertain:
         return view.match_tier, "low confidence; treat with care"
     return view.match_tier, ""
+
+
+def _queue_table(entries: Sequence[Tuple[JobView, str]]) -> str:
+    """The daily queue, each row carrying the reason it is there."""
+    if not entries:
+        return '<p class="empty">Nothing in the queue.</p>'
+    head = ("#", "Why it is here", "Role", "Eligibility", "Freshness", "Match",
+            "Status", "Sources")
+    out = ["<tr>" + "".join(f"<th>{_e(h)}</th>" for h in head) + "</tr>"]
+    for position, (view, reason) in enumerate(entries, start=1):
+        out.append(
+            "<tr>"
+            f"<td>{position}</td>"
+            f"<td>{_e(reason)}</td>"
+            f"<td>{_e(view.title)}<div class='badge'>{_e(view.company)}</div></td>"
+            f"<td>{_e(view.verdict)}"
+            f"<div class='badge'>{_e('; '.join(view.verdict_reasons) or 'no reason recorded')}</div>"
+            + "".join(f'<div class="evidence">{_e(q)}</div>' for q in view.evidence)
+            + "</td>"
+            f"<td class='t-{_slug(view.freshness)}'>{_e(view.freshness)}"
+            f"<div class='badge'>last seen {_e(view.last_seen or 'never')}</div></td>"
+            f"<td>{_score_cell(view)}</td>"
+            f"<td>{_e(view.application_status)}</td>"
+            f"<td>{_e(', '.join(view.sources) or '—')}"
+            f"<div class='badge'>{_e(', '.join(view.source_urls))}</div></td>"
+            "</tr>"
+        )
+    return (
+        '<table><thead>' + out[0] + "</thead><tbody>"
+        + "".join(out[1:]) + "</tbody></table>"
+    )
+
+
+def _category_strip(report: "ReviewReport") -> str:
+    """Counts per category, over the unfiltered corpus.
+
+    Deliberately not affected by the queue filters: narrowing the queue must
+    not make a category look empty when it is not, or a filter would quietly
+    report "no duplicates" when duplicates exist.
+    """
+    order = (
+        ("never reviewed", "never_reviewed"),
+        ("reviewing, undecided", "reviewing_undecided"),
+        ("interested", "interested"),
+        ("shortlisted", "shortlisted"),
+        ("dismissed", "dismissed"),
+        ("uncertain eligibility", "uncertain_eligibility"),
+        ("possible duplicates", "possible_duplicates"),
+        ("stale", "stale"),
+        ("expired", "expired"),
+    )
+    cells = "".join(
+        f"<span>{_e(label)}: <strong>{report.categories.get(key, 0)}</strong></span>"
+        for label, key in order
+    )
+    return f"<div class='panel'>{cells}</div>"
 
 
 def _score_cell(view: JobView) -> str:
@@ -747,7 +1062,19 @@ def render_report_html(report: ReviewReport, *, title: str = "Daily review") -> 
         " &middot; no network requests were made</p>"
         f"{errors}"
         f"<div class='panel'>{counts}</div>"
-        "<h2>New and actionable</h2>"
+        + (
+            f"<p class='meta'>filters: {_e(json.dumps(report.filters, sort_keys=True))}</p>"
+            if report.filters else ""
+        )
+        + _category_strip(report)
+        + "<h2>Actionable queue</h2>"
+        "<p class='meta'>Kenya-eligible, not dismissed, not expired. Ordered by "
+        "status, then freshness, then match tier, then score where one was "
+        "actually calculated, then posted date, then job id. A job with no "
+        "match assessment stays in the queue: missing analysis is not a reason "
+        "to hide a job.</p>"
+        + f"{_queue_table(report.queue)}"
+        + "<h2>New and actionable</h2>"
         "<p class='meta'>Eligible, not yet reviewed, and not stale or expired. "
         "A match tier is shown only where an assessment actually ran; a missing "
         "assessment never removes a job from this list.</p>"
