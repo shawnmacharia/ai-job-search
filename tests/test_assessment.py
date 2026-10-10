@@ -15,6 +15,8 @@ socket, and none imports a real provider implementation.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -1084,15 +1086,53 @@ class LocalOllamaRegistrationTests(AssessmentTestCase):
         self.assertIn("nothing was registered", result.stderr)
 
     def test_the_cli_registration_emits_no_assessment_writes(self):
+        """Drives ``main`` in-process so the patched client applies.
+
+        A subprocess cannot inherit this patch, so a CLI test that expects
+        registration to succeed would reach a real localhost endpoint and pass
+        only on a machine that happens to be running Ollama. Registration
+        behaviour is asserted through ``main`` here; the subprocess tests cover
+        the refusal paths, which return before anything is contacted.
+        """
         install_fake_ollama(self, FakeOllamaFactory())
-        result = self._cli("--register-local-ollama", "--model",
-                           "llama3.2:latest",
-                           "--confirm-local-provider-boundary")
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("DATA BOUNDARY", result.stdout)
-        self.assertIn("LOCAL ONLY", result.stdout)
-        self.assertIn("no job was assessed", result.stdout)
+        import tools.match as match_cli
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = match_cli.main([
+                "--data-dir", str(self.data),
+                "--register-local-ollama",
+                "--model", "llama3.2:latest",
+                "--confirm-local-provider-boundary",
+            ])
+        output = buffer.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("DATA BOUNDARY", output)
+        self.assertIn("LOCAL ONLY", output)
+        self.assertIn("no job was assessed", output)
+        self.assertIn("NOT persisted", output)
         self.assertFalse((self.data / "matches.jsonl").exists())
+
+    def test_the_cli_registration_prints_the_boundary_before_registering(self):
+        """The boundary must appear in the output the operator reads."""
+        install_fake_ollama(self, FakeOllamaFactory())
+        import tools.match as match_cli
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            match_cli.main([
+                "--data-dir", str(self.data),
+                "--register-local-ollama",
+                "--model", "llama3.2:latest",
+                "--confirm-local-provider-boundary",
+            ])
+        output = buffer.getvalue()
+        boundary_at = output.index("DATA BOUNDARY")
+        registered_at = output.index("registered")
+        self.assertLess(boundary_at, registered_at,
+                        "boundary must be printed before registration")
+        self.assertIn("job fields NOT sent", output)
+        self.assertIn("credentials sent", output)
 
 
 class NoNetworkInTestsTests(unittest.TestCase):
